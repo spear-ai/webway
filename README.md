@@ -1,8 +1,8 @@
 # Spear Data Normalization Gateway
 
 A Rust workspace that normalizes legacy Middleware messages into protobuf
-and publishes them to Redpanda. Designed for airgapped Kubernetes
-deployment.
+and publishes them to Redpanda. Designed for airgapped deployment via a
+pre-built, fully-vendored container image.
 
 ---
 
@@ -10,31 +10,34 @@ deployment.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Build time                                                 │
+│  Code generation (spear-gen)                                │
 │                                                             │
 │   .xsd files ──► spear-gen ──► messages.proto               │
-│                           └──► messages.rs (structs)        │
-│                                     │                       │
-│                                     ▼                       │
-│                            compiled into                    │
-│                            spear-gateway                    │
+│                           └──► messages.rs                  │
+│                                (decode_raw / encoded_size)  │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  Runtime                                                    │
+│  Runtime (spear-gateway)                                    │
 │                                                             │
-│  Middleware ──WSDL/XML──► spear-gateway                     │
+│  Redpanda topic                                             │
+│      │                                                      │
+│      ▼                                                      │
+│  ProtoEnvelope::decode_from_bytes()   (spear-lib)           │
+│      │                                                      │
+│      ▼                                                      │
+│  <GeneratedType>::decode_raw()        (from spear-gen)      │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  Publishing path (spear-lib)                                │
+│                                                             │
+│  Middleware ──WSDL/XML──► wsdl::extract_body_payload()      │
 │                               │                            │
-│                          spear-lib                         │
-│                          ├ wsdl::extract_body_payload()     │
-│                          ├ serde XML decode → Rust struct   │
-│                          ├ prost encode → bytes             │
-│                          ├ ProtoEnvelope wrap               │
-│                          └ Publisher → Redpanda topic       │
-│                                                             │
-│  HTTP control plane:                                        │
-│    POST /subscribe   → starts adapter                       │
-│    POST /unsubscribe → stops adapter                        │
+│                          serde XML decode → Rust struct     │
+│                          prost encode → bytes               │
+│                          ProtoEnvelope::new()               │
+│                          Publisher::publish() → Redpanda    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,30 +47,17 @@ deployment.
 
 | Crate | Type | Purpose |
 |---|---|---|
-| `spear-gen` | binary | Code generator: XSD → `.proto` + `.rs` |
+| `spear-gen` | binary | Code generator: XSD → `.proto` + `.rs` with `decode_raw`/`encoded_size` |
 | `spear-lib` | library | Runtime: WSDL parser, `ProtoEnvelope`, Redpanda publisher |
-| `spear-gateway` | binary | HTTP control plane + adapter runner (in progress) |
+| `spear-gateway` | binary | Redpanda consumer; decodes `ProtoEnvelope` and dispatches to generated types |
 
 ---
 
-## Prerequisites
-
-- Rust toolchain (`rustup` recommended, stable)
-- `cmake` (required by `rdkafka`'s bundled librdkafka build)
-- For musl static builds: Docker (see [Deployment](#deployment))
-
----
-
-## Building
+## Building locally
 
 ```bash
-# Build everything
+# Requires: Rust stable, cmake, libcurl (for rdkafka)
 cargo build
-
-# Build only the generator
-cargo build -p spear-gen
-
-# Run tests
 cargo test
 ```
 
@@ -77,62 +67,104 @@ cargo test
 
 Takes a directory of `.xsd` files and emits:
 
-- `messages.proto` — proto3 schema for downstream consumers
-- `messages.rs` — Rust structs with both XML (`serde`) and protobuf
-  (`prost`) derives, used by the gateway to decode and re-encode messages
+- `--out-proto` — proto3 schema for downstream consumers
+- `--out-rust` — Rust structs with `decode_raw(buf, same_endianness)` and
+  `encoded_size()` for the legacy binary wire format, plus `prost::Message`
+  and `serde::Deserialize` derives
 
 ```bash
 cargo run -p spear-gen -- \
-  --input schemas/synthetic \
-  --out-proto generated/proto \
-  --out-rust generated/rust
+  --input   schemas/synthetic \
+  --out-proto generated/types.proto \
+  --out-rust  generated/types.rs
 ```
 
-Output files are regenerated whenever the XSD inputs change. On the
-classified side, point `--input` at the real XSD directory.
-
 See [docs/xsd-proto-mapping.md](docs/xsd-proto-mapping.md) for the full
-mapping rules and known limitations.
+XSD → proto3/Rust mapping rules.
 
 ---
 
-## Development with synthetic schemas
+## Synthetic schemas
 
-The `schemas/synthetic/` directory contains three representative XSD
-files used for local development and testing:
+`schemas/synthetic/` contains three representative XSD files used for
+local development and CI. The classified-side XSDs drop in as a direct
+replacement.
 
 | File | Demonstrates |
 |---|---|
 | `track.xsd` | Nested complex types, optional fields, enumerations |
 | `alert.xsd` | `xs:choice`, `maxOccurs="unbounded"`, cross-file enum refs |
-| `status.xsd` | `xs:extension` (inheritance), 3-level nesting, repeated fields |
-
-These cover all XSD patterns the parser handles. The classified-side XSDs
-drop in as a direct replacement.
+| `status.xsd` | `xs:extension` (inheritance), 3-level nesting, plain string enums |
 
 ---
 
-## Deployment
+## Airgapped deployment
 
-Binaries are built as musl static binaries for airgapped Kubernetes
-deployment — no shared library dependencies, no external registry access
-required at runtime.
+The classified side has no crate registry. The workflow is:
 
-The Docker build takes XSD files as input and produces a self-contained
-gateway image:
+### 1. Build the dev container (internet-connected machine)
 
 ```bash
-# Build with synthetic schemas (dev)
-docker build --build-arg XSD_DIR=schemas/synthetic \
-  -f docker/Dockerfile.gateway -t spear-gateway .
-
-# Build with real schemas (classified side)
-docker build --build-arg XSD_DIR=schemas/real \
-  -f docker/Dockerfile.gateway -t spear-gateway .
+./scripts/build-image.sh
+# → vendors all crates, builds linux/amd64 image, saves to spear-dev.tar.gz
 ```
 
-The `spear-gen` binary is also available as a standalone musl binary for
-running code generation directly without Docker.
+Transfer `spear-dev.tar.gz` to the classified side.
+
+### 2. Load and run the container (classified side)
+
+```bash
+podman load < spear-dev.tar.gz
+
+podman run -d --name spear-dev \
+  -v /path/to/workspace:/workspace \
+  spear-dev:latest
+
+podman exec -it spear-dev bash
+```
+
+The container has the full Rust toolchain, all vendored crate sources, and
+pre-compiled build artifacts. `rdkafka`'s C build is already done in the
+image — rebuilds on classified only recompile changed Rust.
+
+### 3. Generate types from real XSDs (inside container)
+
+```bash
+spear-gen \
+  --input     /workspace/xsds \
+  --out-proto /workspace/types.proto \
+  --out-rust  /workspace/types.rs
+```
+
+### 4. Plug in generated types and rebuild
+
+```bash
+cp /workspace/types.rs /spear/crates/spear-gateway/src/types.rs
+# Uncomment include!("types.rs") in crates/spear-gateway/src/main.rs
+# Add decode_raw call in handle_message()
+cargo build --offline --release -p spear-gateway
+```
+
+### 5. Run against Redpanda
+
+```bash
+REDPANDA_BROKERS=redpanda-host:9092 \
+SPEAR_TOPIC=spear.messages \
+  ./target/release/spear-gateway
+```
+
+---
+
+## CI
+
+| Job | What it checks |
+|---|---|
+| `test` | `cargo test --workspace` on ubuntu + macos |
+| `check-musl` | `cargo check -p spear-gen` (musl target) |
+| `lint` | `cargo fmt --check` + `cargo clippy -D warnings` |
+
+Releases (tagged `v*`) build musl and native binaries for linux and macOS
+and attach them to a GitHub Release.
 
 ---
 
@@ -140,7 +172,7 @@ running code generation directly without Docker.
 
 | Phase | Status | Description |
 |---|---|---|
-| Phase 1 | In progress | `spear-gen` + `spear-lib` |
-| Phase 2 | Planned | Gateway HTTP control plane |
-| Phase 3 | Planned | Middleware adapter (decode → normalize → Redpanda) |
-| Phase 4 | Planned | Hardening, observability, airgapped K8s |
+| Phase 1 | Done | `spear-gen` (XSD → proto + Rust) + `spear-lib` (envelope, publisher, WSDL parser) |
+| Phase 2 | Done | `spear-gateway` consumer skeleton + offline dev container (`spear-dev`) |
+| Phase 3 | Planned | Middleware adapter: live WSDL ingest → normalize → Redpanda |
+| Phase 4 | Planned | Hardening, observability, airgapped K8s manifests |
