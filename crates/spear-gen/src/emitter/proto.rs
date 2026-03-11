@@ -113,11 +113,28 @@ fn field_proto_type(type_ref: &TypeRef, all_types: &[TypeDef]) -> String {
 
 fn snake_case(s: &str) -> String {
     let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            out.push('_');
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '_' {
+            // Preserve existing underscores but never double them.
+            if !out.ends_with('_') {
+                out.push('_');
+            }
+        } else if c.is_uppercase() {
+            if i > 0 && !out.ends_with('_') {
+                let prev = chars[i - 1];
+                // Insert underscore at a camelCase boundary (lower→upper)
+                // or at the end of an uppercase run before lowercase
+                // (e.g. "XMLParser" → "xml_parser", not "x_m_l_parser").
+                let next_is_lower = chars.get(i + 1).map(|c| c.is_lowercase()).unwrap_or(false);
+                if prev.is_lowercase() || (prev.is_uppercase() && next_is_lower) {
+                    out.push('_');
+                }
+            }
+            out.push(c.to_lowercase().next().unwrap());
+        } else {
+            out.push(c);
         }
-        out.push(c.to_lowercase().next().unwrap());
     }
     out
 }
