@@ -1,45 +1,27 @@
 //! Rust struct emitter — walks the AST and produces a `.rs` file.
 //!
-//! Each generated struct carries **both** XML and protobuf derives on the
-//! same type so that a single value can represent a decoded WSDL message
-//! and be directly encoded to protobuf for Redpanda:
+//! Each generated struct carries protobuf derives for encoding to Redpanda
+//! and a `decode_raw` / `encoded_size` impl for the custom binary wire format.
 //!
-//! ```text
-//! XML bytes  ──serde/quick-xml──►  Rust struct  ──prost──►  proto bytes
-//! ```
+//! ## Binary wire format
 //!
-//! ## Derive strategy
+//! Fields are laid out sequentially with no padding:
 //!
-//! | Purpose | Derive |
-//! |---|---|
-//! | XML decode (WSDL in) | `serde::Deserialize` + `#[serde(rename)]` |
-//! | Proto encode (Redpanda out) | `prost::Message` + `#[prost(...)]` |
-//! | Proto enums | `prost::Enumeration` + `#[repr(i32)]` |
-//!
-//! ## Field naming
-//!
-//! XSD element names (PascalCase) are preserved via `#[serde(rename)]` for
-//! XML compatibility. Rust field names are converted to `snake_case`.
-//! Names that collide with Rust keywords have `_field` appended.
-//!
-//! ## Optional and repeated fields
-//!
-//! | XSD | Rust type |
-//! |---|---|
-//! | `minOccurs="0"` on a primitive | `Option<T>` |
-//! | `minOccurs="0"` on a message | `Option<T>` |
-//! | `maxOccurs="unbounded"` | `Vec<T>` |
+//! | XSD type | Bytes | Notes |
+//! |---|---|---|
+//! | `xs:boolean` | 1 | |
+//! | `xs:int` | 4 | byte-swapped if different endianness |
+//! | `xs:long` | 8 | byte-swapped if different endianness |
+//! | `xs:float` | 4 | byte-swapped |
+//! | `xs:double` | 8 | byte-swapped |
+//! | `xs:string` | variable | null-terminated; 1 byte (0x00) if empty |
+//! | enum simpleType | 4 | stored as int32 |
+//! | nested complex type | variable | recursive decode |
+//! | `maxOccurs="unbounded"` | 4 + N×element | int32 count then elements |
 
 use crate::mapping::map_primitive;
 use crate::parser::ast::*;
 
-/// Emit a `.rs` file containing:
-/// - Rust enums for xs:simpleType enumerations (prost + serde)
-/// - Rust structs for xs:complexType (prost::Message + serde::Deserialize for XML)
-///
-/// The structs carry both:
-///   - `#[serde(rename = "...")]` for XML decode (incoming WSDL messages)
-///   - `#[prost(...)]` for protobuf encode (outgoing Redpanda messages)
 pub fn emit(types: &[TypeDef]) -> String {
     let mut out = String::new();
 
@@ -47,6 +29,9 @@ pub fn emit(types: &[TypeDef]) -> String {
     out.push_str("#![allow(clippy::all, dead_code, unused_imports)]\n\n");
     out.push_str("use prost::Message;\n");
     out.push_str("use serde::{Deserialize, Serialize};\n\n");
+
+    // Emit the codec helper module once at the top.
+    emit_codec_helpers(&mut out);
 
     for def in types {
         match def {
@@ -56,8 +41,85 @@ pub fn emit(types: &[TypeDef]) -> String {
         out.push('\n');
     }
 
+    // Emit impl blocks (decode_raw + encoded_size) for every complex type.
+    for def in types {
+        if let TypeDef::Complex(t) = def {
+            emit_impl(t, types, &mut out);
+            out.push('\n');
+        }
+    }
+
     out
 }
+
+// ── codec helpers ─────────────────────────────────────────────────────────────
+
+fn emit_codec_helpers(out: &mut String) {
+    out.push_str(
+        r#"mod _codec {
+    //! Low-level helpers used by the generated decode_raw implementations.
+    pub fn read_bool(buf: &[u8], offset: usize) -> bool {
+        buf[offset] != 0
+    }
+    pub fn read_i32(buf: &[u8], offset: usize, same_endianness: bool) -> i32 {
+        let b = &buf[offset..offset + 4];
+        if same_endianness {
+            i32::from_ne_bytes([b[0], b[1], b[2], b[3]])
+        } else {
+            i32::from_ne_bytes([b[3], b[2], b[1], b[0]])
+        }
+    }
+    pub fn read_u32(buf: &[u8], offset: usize, same_endianness: bool) -> u32 {
+        let b = &buf[offset..offset + 4];
+        if same_endianness {
+            u32::from_ne_bytes([b[0], b[1], b[2], b[3]])
+        } else {
+            u32::from_ne_bytes([b[3], b[2], b[1], b[0]])
+        }
+    }
+    pub fn read_i64(buf: &[u8], offset: usize, same_endianness: bool) -> i64 {
+        let b = &buf[offset..offset + 8];
+        if same_endianness {
+            i64::from_ne_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+        } else {
+            i64::from_ne_bytes([b[7], b[6], b[5], b[4], b[3], b[2], b[1], b[0]])
+        }
+    }
+    pub fn read_u64(buf: &[u8], offset: usize, same_endianness: bool) -> u64 {
+        let b = &buf[offset..offset + 8];
+        if same_endianness {
+            u64::from_ne_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+        } else {
+            u64::from_ne_bytes([b[7], b[6], b[5], b[4], b[3], b[2], b[1], b[0]])
+        }
+    }
+    pub fn read_f32(buf: &[u8], offset: usize, same_endianness: bool) -> f32 {
+        f32::from_bits(read_u32(buf, offset, same_endianness))
+    }
+    pub fn read_f64(buf: &[u8], offset: usize, same_endianness: bool) -> f64 {
+        f64::from_bits(read_u64(buf, offset, same_endianness))
+    }
+    /// Read a null-terminated string. Returns (string, bytes_consumed).
+    /// An immediate null byte encodes an empty/NULL string (1 byte consumed).
+    pub fn read_string(
+        buf: &[u8],
+        offset: usize,
+    ) -> Result<(String, usize), Box<dyn std::error::Error + Send + Sync>> {
+        let rest = &buf[offset..];
+        let null_pos = rest
+            .iter()
+            .position(|&b| b == 0)
+            .ok_or("unterminated string in buffer")?;
+        let s = String::from_utf8_lossy(&rest[..null_pos]).into_owned();
+        Ok((s, null_pos + 1))
+    }
+}
+
+"#,
+    );
+}
+
+// ── struct / enum emit ────────────────────────────────────────────────────────
 
 fn emit_enum(t: &SimpleType, out: &mut String) {
     out.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]\n");
@@ -66,7 +128,6 @@ fn emit_enum(t: &SimpleType, out: &mut String) {
     out.push_str("#[repr(i32)]\n");
     out.push_str(&format!("pub enum {} {{\n", t.name));
     for v in &t.variants {
-        // Preserve original name for serde; the prost macro uses the repr value.
         out.push_str(&format!("    #[serde(rename = \"{}\")]\n", v.name));
         out.push_str(&format!("    {} = {},\n", v.name, v.number));
     }
@@ -100,7 +161,6 @@ fn emit_struct_fields(fields: &[Field], all_types: &[TypeDef], out: &mut String,
     for f in fields {
         let (base_type, prost_attr_base) = field_base_type(&f.type_ref, all_types, tag);
 
-        // Insert `repeated` into the prost attribute for Vec fields.
         let prost_attr = if f.repeated {
             prost_attr_base.replacen("tag=", "repeated, tag=", 1)
         } else {
@@ -110,8 +170,6 @@ fn emit_struct_fields(fields: &[Field], all_types: &[TypeDef], out: &mut String,
         out.push_str(&format!("    #[prost({})]\n", prost_attr));
         out.push_str(&format!("    #[serde(rename = \"{}\")]\n", f.name));
 
-        // Apply Vec or Option wrapper here — never in field_base_type — to
-        // avoid double-wrapping optional message fields.
         let final_type = if f.repeated {
             format!("Vec<{}>", base_type)
         } else if f.optional {
@@ -126,8 +184,284 @@ fn emit_struct_fields(fields: &[Field], all_types: &[TypeDef], out: &mut String,
     }
 }
 
-/// Returns (base_rust_type, prost_attr) without applying Vec/Option wrappers.
-/// The caller in emit_struct_fields applies those based on repeated/optional flags.
+// ── impl block (decode_raw + encoded_size) ────────────────────────────────────
+
+fn emit_impl(t: &ComplexType, all_types: &[TypeDef], out: &mut String) {
+    let fields = match &t.content {
+        ComplexContent::Sequence(f) | ComplexContent::Choice(f) => f,
+        ComplexContent::Extension { .. } => return,
+    };
+    let is_choice = matches!(&t.content, ComplexContent::Choice(_));
+
+    out.push_str(&format!("impl {} {{\n", t.name));
+
+    // ── decode_raw ──
+    out.push_str("    /// Decode from the custom binary wire format.\n");
+    out.push_str("    /// Returns the decoded value and the number of bytes consumed.\n");
+    out.push_str("    pub fn decode_raw(\n");
+    out.push_str("        buf: &[u8],\n");
+    out.push_str("        same_endianness: bool,\n");
+    out.push_str("    ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {\n");
+    out.push_str("        let mut offset = 0usize;\n");
+
+    if is_choice {
+        out.push_str(
+            "        // xs:choice: decoded sequentially; verify field order against encode_raw.\n",
+        );
+    }
+
+    for f in fields {
+        emit_field_decode(f, all_types, out);
+    }
+
+    // Construct Self
+    out.push_str("        Ok((Self {\n");
+    for f in fields {
+        let fname = escape_keyword(&snake_case(&f.name));
+        // Nested complex types and optional fields need Some() wrapping.
+        let needs_some = f.optional || is_complex_type(&f.type_ref, all_types);
+        if needs_some && !f.repeated {
+            out.push_str(&format!("            {fname}: Some({fname}),\n"));
+        } else {
+            out.push_str(&format!("            {fname},\n"));
+        }
+    }
+    out.push_str("        }, offset))\n    }\n\n");
+
+    // ── encoded_size ──
+    out.push_str(
+        "    /// Returns the number of bytes this value occupies in the binary wire format.\n",
+    );
+    out.push_str("    pub fn encoded_size(&self) -> usize {\n");
+    out.push_str("        let mut size = 0usize;\n");
+    for f in fields {
+        emit_field_size(f, all_types, out);
+    }
+    out.push_str("        size\n    }\n");
+    out.push_str("}\n");
+}
+
+fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
+    let fname = escape_keyword(&snake_case(&f.name));
+
+    if f.repeated {
+        emit_array_decode(f, all_types, out, &fname);
+        return;
+    }
+
+    match &f.type_ref {
+        TypeRef::Builtin(p) => {
+            let m = map_primitive(*p);
+            match m.byte_size {
+                0 => {
+                    // Variable-length string
+                    out.push_str(&format!(
+                        "        let ({fname}, _n_{fname}) = _codec::read_string(buf, offset)?;\n"
+                    ));
+                    out.push_str(&format!("        offset += _n_{fname};\n"));
+                }
+                1 => {
+                    out.push_str(&format!(
+                        "        let {fname} = _codec::read_bool(buf, offset);\n"
+                    ));
+                    out.push_str("        offset += 1;\n");
+                }
+                4 => {
+                    let read_fn = if m.rust_type == "f32" {
+                        "read_f32"
+                    } else if m.rust_type == "u32" {
+                        "read_u32"
+                    } else {
+                        "read_i32"
+                    };
+                    out.push_str(&format!(
+                        "        let {fname} = _codec::{read_fn}(buf, offset, same_endianness);\n"
+                    ));
+                    out.push_str("        offset += 4;\n");
+                }
+                8 => {
+                    let read_fn = if m.rust_type == "f64" {
+                        "read_f64"
+                    } else if m.rust_type == "u64" {
+                        "read_u64"
+                    } else {
+                        "read_i64"
+                    };
+                    out.push_str(&format!(
+                        "        let {fname} = _codec::{read_fn}(buf, offset, same_endianness);\n"
+                    ));
+                    out.push_str("        offset += 8;\n");
+                }
+                _ => {}
+            }
+        }
+        TypeRef::Named(name) => {
+            let is_enum = all_types
+                .iter()
+                .any(|t| matches!(t, TypeDef::Simple(s) if s.name == *name));
+            if is_enum {
+                // Enums stored as int32 (4 bytes)
+                out.push_str(&format!(
+                    "        let {fname} = _codec::read_i32(buf, offset, same_endianness);\n"
+                ));
+                out.push_str("        offset += 4;\n");
+            } else {
+                // Nested complex type — recursive decode
+                out.push_str(&format!(
+                    "        let ({fname}, _n_{fname}) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                ));
+                out.push_str(&format!("        offset += _n_{fname};\n"));
+            }
+        }
+    }
+}
+
+fn emit_array_decode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: &str) {
+    // Read element count as int32
+    out.push_str(&format!(
+        "        let _{fname}_count = _codec::read_i32(buf, offset, same_endianness) as usize;\n"
+    ));
+    out.push_str("        offset += 4;\n");
+    out.push_str(&format!(
+        "        if _{fname}_count > 65535 {{ return Err(format!(\"array '{}' count {{}} unreasonably large\", _{fname}_count).into()); }}\n",
+        fname
+    ));
+    out.push_str(&format!(
+        "        let mut {fname} = Vec::with_capacity(_{fname}_count);\n"
+    ));
+    out.push_str(&format!("        for _ in 0.._{fname}_count {{\n"));
+
+    match &f.type_ref {
+        TypeRef::Builtin(p) => {
+            let m = map_primitive(*p);
+            let (read_expr, size) = primitive_read_expr_and_size(m.rust_type, m.byte_size);
+            out.push_str(&format!("            {fname}.push({read_expr});\n"));
+            out.push_str(&format!("            offset += {size};\n"));
+        }
+        TypeRef::Named(name) => {
+            let is_enum = all_types
+                .iter()
+                .any(|t| matches!(t, TypeDef::Simple(s) if s.name == *name));
+            if is_enum {
+                out.push_str(&format!(
+                    "            {fname}.push(_codec::read_i32(buf, offset, same_endianness));\n"
+                ));
+                out.push_str("            offset += 4;\n");
+            } else {
+                out.push_str(&format!(
+                    "            let (item, item_size) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                ));
+                out.push_str("            offset += item_size;\n");
+                out.push_str(&format!("            {fname}.push(item);\n"));
+            }
+        }
+    }
+
+    out.push_str("        }\n");
+}
+
+fn emit_field_size(f: &Field, all_types: &[TypeDef], out: &mut String) {
+    let fname = escape_keyword(&snake_case(&f.name));
+
+    if f.repeated {
+        // 4 bytes for the count + size of each element
+        out.push_str("        size += 4;\n");
+        match &f.type_ref {
+            TypeRef::Builtin(p) => {
+                let m = map_primitive(*p);
+                let elem_size = if m.byte_size == 0 {
+                    // variable-length string in array
+                    format!(
+                        "self.{fname}.iter().map(|s| if s.is_empty() {{ 1 }} else {{ s.len() + 1 }}).sum::<usize>()"
+                    )
+                } else {
+                    format!("self.{fname}.len() * {}", m.byte_size)
+                };
+                out.push_str(&format!("        size += {elem_size};\n"));
+            }
+            TypeRef::Named(name) => {
+                let is_enum = all_types
+                    .iter()
+                    .any(|t| matches!(t, TypeDef::Simple(s) if s.name == *name));
+                if is_enum {
+                    out.push_str(&format!("        size += self.{fname}.len() * 4;\n"));
+                } else {
+                    out.push_str(&format!(
+                        "        size += self.{fname}.iter().map(|e| e.encoded_size()).sum::<usize>();\n"
+                    ));
+                }
+            }
+        }
+        return;
+    }
+
+    // Non-repeated
+    let field_ref = if f.optional {
+        format!("self.{fname}.as_ref()")
+    } else {
+        format!("self.{fname}")
+    };
+
+    match &f.type_ref {
+        TypeRef::Builtin(p) => {
+            let m = map_primitive(*p);
+            if m.byte_size == 0 {
+                // null-terminated string
+                if f.optional {
+                    out.push_str(&format!(
+                        "        size += {field_ref}.map(|s| if s.is_empty() {{ 1 }} else {{ s.len() + 1 }}).unwrap_or(1);\n"
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        size += if self.{fname}.is_empty() {{ 1 }} else {{ self.{fname}.len() + 1 }};\n"
+                    ));
+                }
+            } else {
+                out.push_str(&format!("        size += {};\n", m.byte_size));
+            }
+        }
+        TypeRef::Named(name) => {
+            let is_enum = all_types
+                .iter()
+                .any(|t| matches!(t, TypeDef::Simple(s) if s.name == *name));
+            if is_enum {
+                out.push_str("        size += 4;\n");
+            } else if f.optional {
+                out.push_str(&format!(
+                    "        size += {field_ref}.map(|v| v.encoded_size()).unwrap_or(0);\n"
+                ));
+            } else {
+                out.push_str(&format!("        size += self.{fname}.encoded_size();\n"));
+            }
+        }
+    }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+fn primitive_read_expr_and_size(rust_type: &str, byte_size: usize) -> (String, usize) {
+    let expr = match (rust_type, byte_size) {
+        ("bool", 1) => "_codec::read_bool(buf, offset)".to_owned(),
+        ("i32", 4) => "_codec::read_i32(buf, offset, same_endianness)".to_owned(),
+        ("u32", 4) => "_codec::read_u32(buf, offset, same_endianness)".to_owned(),
+        ("f32", 4) => "_codec::read_f32(buf, offset, same_endianness)".to_owned(),
+        ("i64", 8) => "_codec::read_i64(buf, offset, same_endianness)".to_owned(),
+        ("u64", 8) => "_codec::read_u64(buf, offset, same_endianness)".to_owned(),
+        ("f64", 8) => "_codec::read_f64(buf, offset, same_endianness)".to_owned(),
+        _ => "_codec::read_i32(buf, offset, same_endianness)".to_owned(),
+    };
+    (expr, byte_size)
+}
+
+fn is_complex_type(type_ref: &TypeRef, all_types: &[TypeDef]) -> bool {
+    match type_ref {
+        TypeRef::Named(name) => !all_types
+            .iter()
+            .any(|t| matches!(t, TypeDef::Simple(s) if s.name == *name)),
+        TypeRef::Builtin(_) => false,
+    }
+}
+
 fn field_base_type(type_ref: &TypeRef, all_types: &[TypeDef], tag: u32) -> (String, String) {
     match type_ref {
         TypeRef::Builtin(p) => {
@@ -161,7 +495,6 @@ fn snake_case(s: &str) -> String {
     out
 }
 
-/// Append `_field` to names that collide with Rust keywords.
 fn escape_keyword(s: &str) -> String {
     match s {
         "type" | "ref" | "fn" | "mod" | "use" | "move" | "match" | "loop" | "if" | "else"
