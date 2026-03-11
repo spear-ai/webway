@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:spear:synthetic"
+           xmlns:tns="urn:spear:synthetic"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="AlertSeverity">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Info=0"/>
+      <xs:enumeration value="Warning=1"/>
+      <xs:enumeration value="Critical=2"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="AlertType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="SystemAlert=0"/>
+      <xs:enumeration value="TrackAlert=1"/>
+      <xs:enumeration value="SensorAlert=2"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Demonstrates xs:choice -->
+  <xs:complexType name="AlertSource">
+    <xs:choice>
+      <xs:element name="SystemId" type="xs:string"/>
+      <xs:element name="SensorId" type="xs:string"/>
+      <xs:element name="OperatorId" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="AlertMessage">
+    <xs:sequence>
+      <xs:element name="AlertId" type="xs:string"/>
+      <xs:element name="Timestamp" type="xs:dateTime"/>
+      <xs:element name="Severity" type="tns:AlertSeverity"/>
+      <xs:element name="Type" type="tns:AlertType"/>
+      <xs:element name="Source" type="tns:AlertSource"/>
+      <xs:element name="Description" type="xs:string"/>
+      <xs:element name="RelatedTrackIds" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

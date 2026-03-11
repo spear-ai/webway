@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:spear:synthetic"
+           xmlns:tns="urn:spear:synthetic"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="SystemState">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Offline=0"/>
+      <xs:enumeration value="Initializing=1"/>
+      <xs:enumeration value="Operational=2"/>
+      <xs:enumeration value="Degraded=3"/>
+      <xs:enumeration value="Fault=4"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Demonstrates xs:extension -->
+  <xs:complexType name="BaseMessage">
+    <xs:sequence>
+      <xs:element name="MessageId" type="xs:string"/>
+      <xs:element name="Timestamp" type="xs:dateTime"/>
+      <xs:element name="SourceSystemId" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SensorStatus">
+    <xs:sequence>
+      <xs:element name="SensorId" type="xs:string"/>
+      <xs:element name="Operational" type="xs:boolean"/>
+      <xs:element name="ErrorCodes" type="xs:int" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Demonstrates xs:extension and 3-level nesting -->
+  <xs:complexType name="StatusMessage">
+    <xs:complexContent>
+      <xs:extension base="tns:BaseMessage">
+        <xs:sequence>
+          <xs:element name="State" type="tns:SystemState"/>
+          <xs:element name="Sensors" type="tns:SensorStatus" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+</xs:schema>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:spear:synthetic"
+           xmlns:tns="urn:spear:synthetic"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="TrackCategory">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Unknown=0"/>
+      <xs:enumeration value="Air=1"/>
+      <xs:enumeration value="Surface=2"/>
+      <xs:enumeration value="Subsurface=3"/>
+      <xs:enumeration value="Land=4"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TrackQuality">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Poor=0"/>
+      <xs:enumeration value="Fair=1"/>
+      <xs:enumeration value="Good=2"/>
+      <xs:enumeration value="Excellent=3"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Position">
+    <xs:sequence>
+      <xs:element name="Latitude" type="xs:double"/>
+      <xs:element name="Longitude" type="xs:double"/>
+      <xs:element name="Altitude" type="xs:double" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Velocity">
+    <xs:sequence>
+      <xs:element name="SpeedKnots" type="xs:double"/>
+      <xs:element name="HeadingDeg" type="xs:double"/>
+      <xs:element name="VerticalRateFpm" type="xs:double" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TrackMessage">
+    <xs:sequence>
+      <xs:element name="TrackId" type="xs:string"/>
+      <xs:element name="Timestamp" type="xs:dateTime"/>
+      <xs:element name="Category" type="tns:TrackCategory"/>
+      <xs:element name="Quality" type="tns:TrackQuality"/>
+      <xs:element name="Position" type="tns:Position"/>
+      <xs:element name="Velocity" type="tns:Velocity" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>
