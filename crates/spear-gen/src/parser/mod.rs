@@ -127,10 +127,18 @@ fn parse_simple_type(node: Node) -> Result<Option<SimpleType>> {
     };
 
     let mut variants = Vec::new();
+    let mut next_number: i32 = 0;
     for child in restriction.children().filter(|n| n.is_element()) {
         if child.tag_name().name() == "enumeration" {
             if let Some(raw) = child.attribute("value") {
-                variants.push(parse_enum_variant(raw)?);
+                let mut variant = parse_enum_variant(raw)?;
+                // If the XSD value didn't carry an embedded number, assign
+                // one sequentially so every variant gets a unique tag.
+                if !raw.contains('=') {
+                    variant.number = next_number;
+                }
+                next_number = variant.number + 1;
+                variants.push(variant);
             }
         }
     }

@@ -4,6 +4,15 @@
            xmlns:tns="urn:spear:synthetic"
            elementFormDefault="qualified">
 
+  <!-- Plain string enumeration (no =N convention) — numbers assigned sequentially -->
+  <xs:simpleType name="RecordMode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="DATA_RECORD_OFF"/>
+      <xs:enumeration value="DATA_RECORD_ON"/>
+      <xs:enumeration value="DATA_RECORD_PAUSED"/>
+    </xs:restriction>
+  </xs:simpleType>
+
   <xs:simpleType name="SystemState">
     <xs:restriction base="xs:string">
       <xs:enumeration value="Offline=0"/>
