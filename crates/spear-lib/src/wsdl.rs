@@ -35,8 +35,7 @@ const SOAP_ENV_NS_12: &str = "http://www.w3.org/2003/05/soap-envelope";
 /// The gateway calls this before deserializing the payload into a generated
 /// Rust type with `quick_xml::de::from_str`.
 pub fn extract_body_payload(soap_bytes: &[u8]) -> Result<String> {
-    let soap_str =
-        std::str::from_utf8(soap_bytes).context("SOAP message is not valid UTF-8")?;
+    let soap_str = std::str::from_utf8(soap_bytes).context("SOAP message is not valid UTF-8")?;
 
     let mut reader = Reader::from_str(soap_str);
     reader.trim_text(true);
@@ -94,7 +93,10 @@ pub fn extract_body_payload(soap_bytes: &[u8]) -> Result<String> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => bail!("XML parse error at position {}: {e}", reader.buffer_position()),
+            Err(e) => bail!(
+                "XML parse error at position {}: {e}",
+                reader.buffer_position()
+            ),
             _ => {}
         }
     }
@@ -132,11 +134,7 @@ fn resolve_ns(reader: &Reader<&[u8]>, raw: &[u8]) -> String {
     }
 }
 
-fn append_start_tag(
-    e: &quick_xml::events::BytesStart,
-    _src: &str,
-    buf: &mut String,
-) {
+fn append_start_tag(e: &quick_xml::events::BytesStart, _src: &str, buf: &mut String) {
     buf.push('<');
     buf.push_str(local_name(e.name().as_ref()));
     for attr in e.attributes().flatten() {
@@ -156,11 +154,7 @@ fn append_start_tag(
     buf.push('>');
 }
 
-fn append_empty_tag(
-    e: &quick_xml::events::BytesStart,
-    src: &str,
-    buf: &mut String,
-) {
+fn append_empty_tag(e: &quick_xml::events::BytesStart, src: &str, buf: &mut String) {
     append_start_tag(e, src, buf);
     // Replace trailing `>` with `/>`
     if buf.ends_with('>') {

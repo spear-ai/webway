@@ -35,8 +35,8 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
     let mut type_index: HashMap<String, usize> = HashMap::new();
 
     for path in &xsd_files {
-        let src = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let src =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let doc = roxmltree::Document::parse(&src)
             .with_context(|| format!("parsing {}", path.display()))?;
 
@@ -61,8 +61,8 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
 
 fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
-    for entry in std::fs::read_dir(dir)
-        .with_context(|| format!("reading directory {}", dir.display()))?
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("reading directory {}", dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -278,10 +278,7 @@ fn resolve_type_ref(raw: &str) -> TypeRef {
 }
 
 /// Flatten xs:extension by prepending base type fields into the child.
-fn resolve_extensions(
-    types: Vec<TypeDef>,
-    index: &HashMap<String, usize>,
-) -> Result<Vec<TypeDef>> {
+fn resolve_extensions(types: Vec<TypeDef>, index: &HashMap<String, usize>) -> Result<Vec<TypeDef>> {
     let mut out = Vec::with_capacity(types.len());
 
     for def in &types {
@@ -295,7 +292,9 @@ fn resolve_extensions(
                         TypeDef::Complex(b) => fields_of(b),
                         _ => bail!(
                             "type '{}' extends '{}' but '{}' is not a complex type",
-                            name, base, base
+                            name,
+                            base,
+                            base
                         ),
                     },
                     None => {

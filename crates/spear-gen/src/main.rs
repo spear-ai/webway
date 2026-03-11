@@ -57,8 +57,7 @@ fn main() -> Result<()> {
 
     eprintln!("spear-gen: reading XSD files from {}", args.input.display());
 
-    let types = parser::load_schemas(&args.input)
-        .context("failed to parse XSD schemas")?;
+    let types = parser::load_schemas(&args.input).context("failed to parse XSD schemas")?;
 
     eprintln!("spear-gen: found {} type definitions", types.len());
 

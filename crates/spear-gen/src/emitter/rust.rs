@@ -67,10 +67,7 @@ fn emit_enum(t: &SimpleType, out: &mut String) {
     out.push_str(&format!("pub enum {} {{\n", t.name));
     for v in &t.variants {
         // Preserve original name for serde; the prost macro uses the repr value.
-        out.push_str(&format!(
-            "    #[serde(rename = \"{}\")]\n",
-            v.name
-        ));
+        out.push_str(&format!("    #[serde(rename = \"{}\")]\n", v.name));
         out.push_str(&format!("    {} = {},\n", v.name, v.number));
     }
     out.push_str("}\n");

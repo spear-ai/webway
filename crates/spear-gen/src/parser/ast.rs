@@ -1,13 +1,5 @@
 /// Internal representation of XSD types after parsing.
 /// All emitters (proto, rust) work from this AST.
-
-#[derive(Debug, Clone)]
-pub struct Schema {
-    pub target_namespace: Option<String>,
-    /// All type definitions from this file and its imports, keyed by name.
-    pub types: Vec<TypeDef>,
-}
-
 #[derive(Debug, Clone)]
 pub enum TypeDef {
     Simple(SimpleType),

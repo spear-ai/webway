@@ -45,7 +45,11 @@ pub struct ProtoEnvelope {
 }
 
 impl ProtoEnvelope {
-    pub fn new(schema_version: u32, source_adapter_id: impl Into<String>, payload: Vec<u8>) -> Self {
+    pub fn new(
+        schema_version: u32,
+        source_adapter_id: impl Into<String>,
+        payload: Vec<u8>,
+    ) -> Self {
         Self {
             schema_version,
             timestamp_ms: now_ms(),
