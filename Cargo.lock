@@ -557,6 +557,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "spear-gateway"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "prost",
+ "rdkafka",
+ "spear-lib",
+ "tokio",
+]
+
+[[package]]
 name = "spear-gen"
 version = "0.1.0"
 dependencies = [

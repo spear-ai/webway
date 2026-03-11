@@ -2,12 +2,13 @@
 members = [
     "crates/spear-gen",
     "crates/spear-lib",
+    "crates/spear-gateway",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 roxmltree = "0.19"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 prost = "0.12"
 quick-xml = { version = "0.31", features = ["serialize"] }

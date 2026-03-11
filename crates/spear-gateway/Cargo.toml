@@ -1,0 +1,12 @@
+[package]
+name = "spear-gateway"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spear-lib = { path = "../spear-lib" }
+rdkafka = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+prost = { workspace = true }
