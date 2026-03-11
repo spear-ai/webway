@@ -1,7 +1,7 @@
 # Spear Data Normalization Gateway
 
-A Rust workspace that normalizes legacy Middleware messages into protobuf
-and publishes them to Redpanda. Designed for airgapped deployment via a
+A Rust workspace that decodes legacy Middleware binary messages using types
+generated from XSD schemas. Designed for airgapped deployment via a
 pre-built, fully-vendored container image.
 
 ---
@@ -12,32 +12,28 @@ pre-built, fully-vendored container image.
 ┌─────────────────────────────────────────────────────────────┐
 │  Code generation (spear-gen)                                │
 │                                                             │
-│   .xsd files ──► spear-gen ──► messages.proto               │
-│                           └──► messages.rs                  │
+│   .xsd files ──► spear-gen ──► types.proto                  │
+│                           └──► types.rs                     │
 │                                (decode_raw / encoded_size)  │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  Runtime (spear-gateway)                                    │
+│  Decode pipeline (spear-gateway)                            │
 │                                                             │
-│  Redpanda topic                                             │
-│      │                                                      │
-│      ▼                                                      │
-│  ProtoEnvelope::decode_from_bytes()   (spear-lib)           │
-│      │                                                      │
-│      ▼                                                      │
-│  <GeneratedType>::decode_raw()        (from spear-gen)      │
+│  legacy broker ──raw binary──► decode_raw() → Rust struct   │
+│       or                                                    │
+│  captured file ──raw binary──► decode_raw() → Rust struct   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  Publishing path (spear-lib)                                │
+│  Future: normalization + publish (spear-lib)                │
 │                                                             │
-│  Middleware ──WSDL/XML──► wsdl::extract_body_payload()      │
-│                               │                            │
-│                          serde XML decode → Rust struct     │
-│                          prost encode → bytes               │
-│                          ProtoEnvelope::new()               │
-│                          Publisher::publish() → Redpanda    │
+│  decoded struct                                             │
+│      │                                                      │
+│      ▼                                                      │
+│  prost encode → ProtoEnvelope → Publisher → Redpanda        │
+│                                                 │           │
+│                                        new consumers        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,14 +45,14 @@ pre-built, fully-vendored container image.
 |---|---|---|
 | `spear-gen` | binary | Code generator: XSD → `.proto` + `.rs` with `decode_raw`/`encoded_size` |
 | `spear-lib` | library | Runtime: WSDL parser, `ProtoEnvelope`, Redpanda publisher |
-| `spear-gateway` | binary | Redpanda consumer; decodes `ProtoEnvelope` and dispatches to generated types |
+| `spear-gateway` | binary | Decode pipeline: raw binary bytes → generated types → printed output |
 
 ---
 
 ## Building locally
 
 ```bash
-# Requires: Rust stable, cmake, libcurl (for rdkafka)
+# Requires: Rust stable, cmake, libcurl (for rdkafka in spear-lib)
 cargo build
 cargo test
 ```
@@ -74,7 +70,7 @@ Takes a directory of `.xsd` files and emits:
 
 ```bash
 cargo run -p spear-gen -- \
-  --input   schemas/synthetic \
+  --input     schemas/synthetic \
   --out-proto generated/types.proto \
   --out-rust  generated/types.rs
 ```
@@ -124,8 +120,8 @@ podman exec -it spear-dev bash
 ```
 
 The container has the full Rust toolchain, all vendored crate sources, and
-pre-compiled build artifacts. `rdkafka`'s C build is already done in the
-image — rebuilds on classified only recompile changed Rust.
+pre-compiled build artifacts. Rebuilds inside the container only recompile
+changed Rust — the heavy C dependencies are already done.
 
 ### 3. Generate types from real XSDs (inside container)
 
@@ -140,17 +136,20 @@ spear-gen \
 
 ```bash
 cp /workspace/types.rs /spear/crates/spear-gateway/src/types.rs
-# Uncomment include!("types.rs") in crates/spear-gateway/src/main.rs
-# Add decode_raw call in handle_message()
+# In crates/spear-gateway/src/main.rs:
+#   1. Uncomment include!("types.rs")
+#   2. Add decode_raw call in decode_and_print()
 cargo build --offline --release -p spear-gateway
 ```
 
-### 5. Run against Redpanda
+### 5. Decode a captured binary
 
 ```bash
-REDPANDA_BROKERS=redpanda-host:9092 \
-SPEAR_TOPIC=spear.messages \
-  ./target/release/spear-gateway
+# File mode — decode a raw binary captured from the wire
+./target/release/spear-gateway --file /workspace/captures/msg.bin
+
+# Live mode — connect to the legacy broker (C integration, coming later)
+./target/release/spear-gateway --live
 ```
 
 ---
@@ -173,6 +172,6 @@ and attach them to a GitHub Release.
 | Phase | Status | Description |
 |---|---|---|
 | Phase 1 | Done | `spear-gen` (XSD → proto + Rust) + `spear-lib` (envelope, publisher, WSDL parser) |
-| Phase 2 | Done | `spear-gateway` consumer skeleton + offline dev container (`spear-dev`) |
-| Phase 3 | Planned | Middleware adapter: live WSDL ingest → normalize → Redpanda |
+| Phase 2 | Done | `spear-gateway` decode pipeline + offline dev container (`spear-dev`) |
+| Phase 3 | Planned | Live legacy broker integration → normalize → publish to Redpanda |
 | Phase 4 | Planned | Hardening, observability, airgapped K8s manifests |
