@@ -1,0 +1,35 @@
+---
+description: Run formatting and lint checks before every git push
+globs: ["**/*.rs"]
+alwaysApply: true
+---
+
+# Pre-push checks
+
+Before running any `git push`, always run these two commands in order from
+the workspace root. Both must pass clean before pushing.
+
+```bash
+cargo fmt -- --check
+cargo clippy -- -D warnings
+```
+
+If `cargo fmt -- --check` fails, run `cargo fmt` to fix it, then re-check.
+
+If `cargo clippy -- -D warnings` fails, fix all errors and warnings before
+pushing. Do not suppress warnings with `#[allow(...)]` unless there is a
+clear documented reason.
+
+After both pass, run the tests to confirm nothing is broken:
+
+```bash
+cargo test
+```
+
+Then push.
+
+## Why
+
+The CI lint job runs `cargo fmt -- --check` and `cargo clippy -- -D warnings`
+and will fail the build if either is not clean. Fixing this after a push
+wastes a CI run and leaves the main branch red.
