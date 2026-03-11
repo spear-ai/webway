@@ -26,6 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # rdkafka (spear-lib) requires cmake + curl headers on Linux.
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -51,9 +56,9 @@ jobs:
   # Verify the musl target compiles on every push so issues don't
   # surface for the first time during a release build.
   #
-  # NOTE: when spear-gateway is added (rdkafka dependency), this job
-  # will need: sudo apt-get install -y cmake and the cmake-build feature
-  # on rdkafka. Update this comment and the step when that happens.
+  # spear-gen is pure Rust so musl-tools is sufficient here.
+  # NOTE: when spear-gateway is added, this job will also need
+  # cmake + libcurl4-openssl-dev (same as the test job above).
   check-musl:
     name: Check (x86_64-unknown-linux-musl)
     runs-on: ubuntu-latest

@@ -17,8 +17,8 @@ jobs:
       matrix:
         include:
           # Deployment target — airgapped Linux environments.
-          # NOTE: when spear-gateway is added (rdkafka), this job will need
-          # cmake installed and the cmake-build feature on rdkafka.
+          # cmake + libcurl4-openssl-dev are already installed for all Linux
+          # jobs below. No changes needed when spear-gateway is added.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: spear-gen-linux-x86_64-musl
@@ -43,9 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install musl tools
-        if: matrix.musl
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # rdkafka requires cmake + curl headers on Linux (both gnu and musl builds).
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev musl-tools
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
