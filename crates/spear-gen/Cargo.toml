@@ -11,3 +11,7 @@ path = "src/main.rs"
 roxmltree = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+prost = { workspace = true }
+serde = { workspace = true }
