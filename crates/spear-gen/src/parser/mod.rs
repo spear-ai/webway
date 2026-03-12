@@ -20,7 +20,7 @@
 
 pub mod ast;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -111,33 +111,38 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
 }
 
 /// Recursively collect all `.xsd` files under `dir`, sorted for determinism.
-/// Uses `entry.file_type()` (does not follow symlinks) to avoid infinite
-/// loops if the directory tree contains circular symlinks.
+/// Follows symlinks to directories but tracks canonical paths to avoid
+/// infinite loops from circular symlinks.
 fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
+    let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut stack = vec![dir.to_path_buf()];
 
     while let Some(current) = stack.pop() {
+        // Use canonical path for cycle detection so symlinks to the same
+        // real directory are only visited once.
+        let canonical = current.canonicalize().unwrap_or_else(|_| current.clone());
+        if !visited.insert(canonical) {
+            continue;
+        }
+
         for entry in std::fs::read_dir(&current)
             .with_context(|| format!("reading directory {}", current.display()))?
         {
             let entry = entry?;
-            let ft = entry
-                .file_type()
-                .with_context(|| format!("stat {}", entry.path().display()))?;
-            if ft.is_dir() {
-                stack.push(entry.path());
-            } else if ft.is_file()
-                && entry
-                    .path()
-                    .extension()
+            let p = entry.path();
+            // Use p.is_dir() which follows symlinks, so symlinked dirs are
+            // pushed onto the stack and visited (cycle check above handles loops).
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.is_file()
+                && p.extension()
                     .and_then(|e| e.to_str())
                     .map(|e| e.eq_ignore_ascii_case("xsd"))
                     .unwrap_or(false)
             {
-                paths.push(entry.path());
+                paths.push(p);
             }
-            // symlinks are intentionally skipped
         }
     }
 
@@ -478,6 +483,8 @@ fn resolve_type_ref(raw: &str) -> TypeRef {
         "float" => TypeRef::Builtin(Primitive::Float),
         "double" | "decimal" => TypeRef::Builtin(Primitive::Double),
         "base64Binary" | "hexBinary" => TypeRef::Builtin(Primitive::Bytes),
+        // xs:anyType — catch-all, map to String
+        "anyType" => TypeRef::Builtin(Primitive::String),
         // Java/.NET-style array notation sometimes found in vendor XSDs
         "byte[]" | "Byte[]" => TypeRef::Builtin(Primitive::Bytes),
         "string[]" | "String[]" => TypeRef::Builtin(Primitive::String),
