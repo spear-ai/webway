@@ -128,11 +128,7 @@ fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
             if ft.is_dir() {
                 stack.push(entry.path());
             } else if ft.is_file()
-                && entry
-                    .path()
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    == Some("xsd")
+                && entry.path().extension().and_then(|e| e.to_str()) == Some("xsd")
             {
                 paths.push(entry.path());
             }
