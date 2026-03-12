@@ -174,6 +174,7 @@ pub enum AlertType {
     SensorAlert = 2,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -190,6 +191,7 @@ pub struct AlertSource {
     pub operator_id: String,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -257,6 +259,7 @@ pub enum SystemState {
     Fault = 4,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -272,6 +275,7 @@ pub struct BaseMessage {
     pub source_system_id: String,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -287,6 +291,7 @@ pub struct SensorStatus {
     pub error_codes: Vec<i32>,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -308,6 +313,7 @@ pub struct StatusMessage {
     pub sensors: Vec<SensorStatus>,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -363,6 +369,7 @@ pub enum TrackQuality {
     Excellent = 3,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -378,6 +385,7 @@ pub struct Position {
     pub altitude: f64,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]
@@ -393,6 +401,7 @@ pub struct Velocity {
     pub vertical_rate_fpm: f64,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, PartialEq)]
 #[derive(Message)]
 #[derive(Serialize, Deserialize)]

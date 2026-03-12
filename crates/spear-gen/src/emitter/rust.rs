@@ -229,6 +229,7 @@ fn emit_enum(t: &SimpleType, out: &mut String) {
 
 fn emit_struct(t: &ComplexType, all_types: &[TypeDef], out: &mut String) {
     // prost::Message derives Debug internally; don't derive it again.
+    out.push_str("#[allow(non_camel_case_types, clippy::upper_case_acronyms)]\n");
     out.push_str("#[derive(Clone, PartialEq)]\n");
     out.push_str("#[derive(Message)]\n");
     out.push_str("#[derive(Serialize, Deserialize)]\n");

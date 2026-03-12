@@ -128,7 +128,12 @@ fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
             if ft.is_dir() {
                 stack.push(entry.path());
             } else if ft.is_file()
-                && entry.path().extension().and_then(|e| e.to_str()) == Some("xsd")
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("xsd"))
+                    .unwrap_or(false)
             {
                 paths.push(entry.path());
             }
@@ -185,6 +190,25 @@ fn collect_type_aliases(
                 // Record it for transitive resolution.
                 pending.insert(name.to_owned(), named_base);
             }
+        }
+    }
+
+    // xs:union — a union of types. Treat as String (most unions include
+    // string in their member list; this is a v1 approximation).
+    for child in root.children().filter(|n| n.is_element()) {
+        if child.tag_name().name() != "simpleType" {
+            continue;
+        }
+        let name = match child.attribute("name") {
+            Some(n) => n.trim(),
+            None => continue,
+        };
+        if name.is_empty() || aliases.contains_key(name) || pending.contains_key(name) {
+            continue;
+        }
+        if find_child_ns(child, XS, "union").is_some() || find_child_ns(child, XS, "list").is_some()
+        {
+            aliases.insert(name.to_owned(), Primitive::String);
         }
     }
 }
