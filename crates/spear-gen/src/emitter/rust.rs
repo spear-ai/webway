@@ -668,9 +668,15 @@ fn is_enum_type(name: &str, all_types: &[TypeDef]) -> bool {
         .any(|t| matches!(t, TypeDef::Simple(s) if s.name == name))
 }
 
+fn is_known_complex_type(name: &str, all_types: &[TypeDef]) -> bool {
+    all_types
+        .iter()
+        .any(|t| matches!(t, TypeDef::Complex(c) if c.name == name))
+}
+
 fn is_complex_type(type_ref: &TypeRef, all_types: &[TypeDef]) -> bool {
     match type_ref {
-        TypeRef::Named(name) => !is_enum_type(name, all_types),
+        TypeRef::Named(name) => is_known_complex_type(name, all_types),
         TypeRef::Builtin(_) => false,
     }
 }
@@ -686,10 +692,17 @@ fn field_base_type(type_ref: &TypeRef, all_types: &[TypeDef], tag: u32) -> (Stri
             if is_enum_type(name, all_types) {
                 let prost = format!("enumeration=\"{}\", tag=\"{}\"", name, tag);
                 ("i32".to_owned(), prost)
-            } else {
+            } else if is_known_complex_type(name, all_types) {
                 // Nested message — prost requires Option<T> with `message, tag=...`
                 let prost = format!("message, tag=\"{}\"", tag);
                 (name.clone(), prost)
+            } else {
+                // Unresolved type — not found in the loaded XSD set.
+                // Falls back to Vec<u8>; re-run spear-gen with the missing
+                // XSD file included to get the real type.
+                eprintln!("warning: unresolved type '{name}' — falling back to Vec<u8>");
+                let prost = format!("bytes, tag=\"{}\"", tag);
+                ("Vec<u8>".to_owned(), prost)
             }
         }
     }
