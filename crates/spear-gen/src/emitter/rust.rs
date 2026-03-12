@@ -302,7 +302,7 @@ fn emit_impl(t: &ComplexType, all_types: &[TypeDef], out: &mut String) {
     out.push_str("        buf: &[u8],\n");
     out.push_str("        same_endianness: bool,\n");
     out.push_str("    ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {\n");
-    out.push_str("        let mut offset = 0usize;\n");
+    out.push_str("        let mut _ofs = 0usize;\n");
 
     if is_choice {
         out.push_str(
@@ -328,7 +328,7 @@ fn emit_impl(t: &ComplexType, all_types: &[TypeDef], out: &mut String) {
             out.push_str(&format!("            {fname},\n"));
         }
     }
-    out.push_str("        }, offset))\n    }\n\n");
+    out.push_str("        }, _ofs))\n    }\n\n");
 
     // ── encode_raw ──
     out.push_str("    /// Encode into the custom binary wire format, appending to `buf`.\n");
@@ -367,21 +367,21 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
             match m.byte_size {
                 0 if m.rust_type == "Vec<u8>" => {
                     out.push_str(&format!(
-                        "        let ({fname}, _n_{fname}) = _codec::read_bytes(buf, offset, same_endianness)?;\n"
+                        "        let ({fname}, _n_{fname}) = _codec::read_bytes(buf, _ofs, same_endianness)?;\n"
                     ));
-                    out.push_str(&format!("        offset += _n_{fname};\n"));
+                    out.push_str(&format!("        _ofs += _n_{fname};\n"));
                 }
                 0 => {
                     out.push_str(&format!(
-                        "        let ({fname}, _n_{fname}) = _codec::read_string(buf, offset)?;\n"
+                        "        let ({fname}, _n_{fname}) = _codec::read_string(buf, _ofs)?;\n"
                     ));
-                    out.push_str(&format!("        offset += _n_{fname};\n"));
+                    out.push_str(&format!("        _ofs += _n_{fname};\n"));
                 }
                 1 => {
                     out.push_str(&format!(
-                        "        let {fname} = _codec::read_bool(buf, offset);\n"
+                        "        let {fname} = _codec::read_bool(buf, _ofs);\n"
                     ));
-                    out.push_str("        offset += 1;\n");
+                    out.push_str("        _ofs += 1;\n");
                 }
                 4 => {
                     let read_fn = if m.rust_type == "f32" {
@@ -392,9 +392,9 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
                         "read_i32"
                     };
                     out.push_str(&format!(
-                        "        let {fname} = _codec::{read_fn}(buf, offset, same_endianness);\n"
+                        "        let {fname} = _codec::{read_fn}(buf, _ofs, same_endianness);\n"
                     ));
-                    out.push_str("        offset += 4;\n");
+                    out.push_str("        _ofs += 4;\n");
                 }
                 8 => {
                     let read_fn = if m.rust_type == "f64" {
@@ -405,9 +405,9 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
                         "read_i64"
                     };
                     out.push_str(&format!(
-                        "        let {fname} = _codec::{read_fn}(buf, offset, same_endianness);\n"
+                        "        let {fname} = _codec::{read_fn}(buf, _ofs, same_endianness);\n"
                     ));
-                    out.push_str("        offset += 8;\n");
+                    out.push_str("        _ofs += 8;\n");
                 }
                 _ => {}
             }
@@ -416,20 +416,20 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
             let is_enum = is_enum_type(name, all_types);
             if is_enum {
                 out.push_str(&format!(
-                    "        let {fname} = _codec::read_i32(buf, offset, same_endianness);\n"
+                    "        let {fname} = _codec::read_i32(buf, _ofs, same_endianness);\n"
                 ));
-                out.push_str("        offset += 4;\n");
+                out.push_str("        _ofs += 4;\n");
             } else if f.optional {
                 // Optional complex type: preceded by a 1-byte presence flag.
                 out.push_str(&format!(
-                    "        let {fname}_present = _codec::read_bool(buf, offset);\n"
+                    "        let {fname}_present = _codec::read_bool(buf, _ofs);\n"
                 ));
-                out.push_str("        offset += 1;\n");
+                out.push_str("        _ofs += 1;\n");
                 out.push_str(&format!("        let {fname} = if {fname}_present {{\n"));
                 out.push_str(&format!(
-                    "            let (v, n) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                    "            let (v, n) = {name}::decode_raw(&buf[_ofs..], same_endianness)?;\n"
                 ));
-                out.push_str("            offset += n;\n");
+                out.push_str("            _ofs += n;\n");
                 out.push_str("            Some(v)\n");
                 out.push_str("        } else {\n");
                 out.push_str("            None\n");
@@ -437,9 +437,9 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
             } else {
                 // Required complex type: always present, no flag.
                 out.push_str(&format!(
-                    "        let ({fname}, _n_{fname}) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                    "        let ({fname}, _n_{fname}) = {name}::decode_raw(&buf[_ofs..], same_endianness)?;\n"
                 ));
-                out.push_str(&format!("        offset += _n_{fname};\n"));
+                out.push_str(&format!("        _ofs += _n_{fname};\n"));
             }
         }
     }
@@ -447,9 +447,9 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
 
 fn emit_array_decode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: &str) {
     out.push_str(&format!(
-        "        let _{fname}_count = _codec::read_i32(buf, offset, same_endianness) as usize;\n"
+        "        let _{fname}_count = _codec::read_i32(buf, _ofs, same_endianness) as usize;\n"
     ));
-    out.push_str("        offset += 4;\n");
+    out.push_str("        _ofs += 4;\n");
     out.push_str(&format!(
         "        if _{fname}_count > 65535 {{ return Err(format!(\"array '{}' count {{}} unreasonably large\", _{fname}_count).into()); }}\n",
         fname
@@ -465,34 +465,34 @@ fn emit_array_decode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
             if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
                 // length-prefixed bytes in array
                 out.push_str(
-                    "            let (_elem, _elem_n) = _codec::read_bytes(buf, offset, same_endianness)?;\n",
+                    "            let (_elem, _elem_n) = _codec::read_bytes(buf, _ofs, same_endianness)?;\n",
                 );
-                out.push_str("            offset += _elem_n;\n");
+                out.push_str("            _ofs += _elem_n;\n");
                 out.push_str(&format!("            {fname}.push(_elem);\n"));
             } else if m.byte_size == 0 {
                 // variable-length string in array
                 out.push_str(
-                    "            let (_elem, _elem_n) = _codec::read_string(buf, offset)?;\n",
+                    "            let (_elem, _elem_n) = _codec::read_string(buf, _ofs)?;\n",
                 );
-                out.push_str("            offset += _elem_n;\n");
+                out.push_str("            _ofs += _elem_n;\n");
                 out.push_str(&format!("            {fname}.push(_elem);\n"));
             } else {
                 let (read_expr, size) = primitive_read_expr_and_size(m.rust_type, m.byte_size);
                 out.push_str(&format!("            {fname}.push({read_expr});\n"));
-                out.push_str(&format!("            offset += {size};\n"));
+                out.push_str(&format!("            _ofs += {size};\n"));
             }
         }
         TypeRef::Named(name) => {
             if is_enum_type(name, all_types) {
                 out.push_str(&format!(
-                    "            {fname}.push(_codec::read_i32(buf, offset, same_endianness));\n"
+                    "            {fname}.push(_codec::read_i32(buf, _ofs, same_endianness));\n"
                 ));
-                out.push_str("            offset += 4;\n");
+                out.push_str("            _ofs += 4;\n");
             } else {
                 out.push_str(&format!(
-                    "            let (_elem, _elem_size) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                    "            let (_elem, _elem_size) = {name}::decode_raw(&buf[_ofs..], same_endianness)?;\n"
                 ));
-                out.push_str("            offset += _elem_size;\n");
+                out.push_str("            _ofs += _elem_size;\n");
                 out.push_str(&format!("            {fname}.push(_elem);\n"));
             }
         }
@@ -702,14 +702,14 @@ fn emit_field_size(f: &Field, all_types: &[TypeDef], out: &mut String) {
 
 fn primitive_read_expr_and_size(rust_type: &str, byte_size: usize) -> (String, usize) {
     let expr = match (rust_type, byte_size) {
-        ("bool", 1) => "_codec::read_bool(buf, offset)".to_owned(),
-        ("i32", 4) => "_codec::read_i32(buf, offset, same_endianness)".to_owned(),
-        ("u32", 4) => "_codec::read_u32(buf, offset, same_endianness)".to_owned(),
-        ("f32", 4) => "_codec::read_f32(buf, offset, same_endianness)".to_owned(),
-        ("i64", 8) => "_codec::read_i64(buf, offset, same_endianness)".to_owned(),
-        ("u64", 8) => "_codec::read_u64(buf, offset, same_endianness)".to_owned(),
-        ("f64", 8) => "_codec::read_f64(buf, offset, same_endianness)".to_owned(),
-        _ => "_codec::read_i32(buf, offset, same_endianness)".to_owned(),
+        ("bool", 1) => "_codec::read_bool(buf, _ofs)".to_owned(),
+        ("i32", 4) => "_codec::read_i32(buf, _ofs, same_endianness)".to_owned(),
+        ("u32", 4) => "_codec::read_u32(buf, _ofs, same_endianness)".to_owned(),
+        ("f32", 4) => "_codec::read_f32(buf, _ofs, same_endianness)".to_owned(),
+        ("i64", 8) => "_codec::read_i64(buf, _ofs, same_endianness)".to_owned(),
+        ("u64", 8) => "_codec::read_u64(buf, _ofs, same_endianness)".to_owned(),
+        ("f64", 8) => "_codec::read_f64(buf, _ofs, same_endianness)".to_owned(),
+        _ => "_codec::read_i32(buf, _ofs, same_endianness)".to_owned(),
     };
     (expr, byte_size)
 }

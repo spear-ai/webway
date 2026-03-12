@@ -434,19 +434,19 @@ impl AlertSource {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
+        let mut _ofs = 0usize;
         // xs:choice: decoded sequentially; verify field order against encode_raw.
-        let (system_id, _n_system_id) = _codec::read_string(buf, offset)?;
-        offset += _n_system_id;
-        let (sensor_id, _n_sensor_id) = _codec::read_string(buf, offset)?;
-        offset += _n_sensor_id;
-        let (operator_id, _n_operator_id) = _codec::read_string(buf, offset)?;
-        offset += _n_operator_id;
+        let (system_id, _n_system_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_system_id;
+        let (sensor_id, _n_sensor_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_sensor_id;
+        let (operator_id, _n_operator_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_operator_id;
         Ok((Self {
             system_id,
             sensor_id,
             operator_id,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -474,26 +474,26 @@ impl AlertMessage {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (alert_id, _n_alert_id) = _codec::read_string(buf, offset)?;
-        offset += _n_alert_id;
-        let (timestamp, _n_timestamp) = _codec::read_string(buf, offset)?;
-        offset += _n_timestamp;
-        let severity = _codec::read_i32(buf, offset, same_endianness);
-        offset += 4;
-        let type_field = _codec::read_i32(buf, offset, same_endianness);
-        offset += 4;
-        let (source, _n_source) = AlertSource::decode_raw(&buf[offset..], same_endianness)?;
-        offset += _n_source;
-        let (description, _n_description) = _codec::read_string(buf, offset)?;
-        offset += _n_description;
-        let _related_track_ids_count = _codec::read_i32(buf, offset, same_endianness) as usize;
-        offset += 4;
+        let mut _ofs = 0usize;
+        let (alert_id, _n_alert_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_alert_id;
+        let (timestamp, _n_timestamp) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_timestamp;
+        let severity = _codec::read_i32(buf, _ofs, same_endianness);
+        _ofs += 4;
+        let type_field = _codec::read_i32(buf, _ofs, same_endianness);
+        _ofs += 4;
+        let (source, _n_source) = AlertSource::decode_raw(&buf[_ofs..], same_endianness)?;
+        _ofs += _n_source;
+        let (description, _n_description) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_description;
+        let _related_track_ids_count = _codec::read_i32(buf, _ofs, same_endianness) as usize;
+        _ofs += 4;
         if _related_track_ids_count > 65535 { return Err(format!("array 'related_track_ids' count {} unreasonably large", _related_track_ids_count).into()); }
         let mut related_track_ids = Vec::with_capacity(_related_track_ids_count);
         for _ in 0.._related_track_ids_count {
-            let (_elem, _elem_n) = _codec::read_string(buf, offset)?;
-            offset += _elem_n;
+            let (_elem, _elem_n) = _codec::read_string(buf, _ofs)?;
+            _ofs += _elem_n;
             related_track_ids.push(_elem);
         }
         Ok((Self {
@@ -504,7 +504,7 @@ impl AlertMessage {
             source: Some(source),
             description,
             related_track_ids,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -542,18 +542,18 @@ impl BaseMessage {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (message_id, _n_message_id) = _codec::read_string(buf, offset)?;
-        offset += _n_message_id;
-        let (timestamp, _n_timestamp) = _codec::read_string(buf, offset)?;
-        offset += _n_timestamp;
-        let (source_system_id, _n_source_system_id) = _codec::read_string(buf, offset)?;
-        offset += _n_source_system_id;
+        let mut _ofs = 0usize;
+        let (message_id, _n_message_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_message_id;
+        let (timestamp, _n_timestamp) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_timestamp;
+        let (source_system_id, _n_source_system_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_source_system_id;
         Ok((Self {
             message_id,
             timestamp,
             source_system_id,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -581,24 +581,24 @@ impl SensorStatus {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (sensor_id, _n_sensor_id) = _codec::read_string(buf, offset)?;
-        offset += _n_sensor_id;
-        let operational = _codec::read_bool(buf, offset);
-        offset += 1;
-        let _error_codes_count = _codec::read_i32(buf, offset, same_endianness) as usize;
-        offset += 4;
+        let mut _ofs = 0usize;
+        let (sensor_id, _n_sensor_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_sensor_id;
+        let operational = _codec::read_bool(buf, _ofs);
+        _ofs += 1;
+        let _error_codes_count = _codec::read_i32(buf, _ofs, same_endianness) as usize;
+        _ofs += 4;
         if _error_codes_count > 65535 { return Err(format!("array 'error_codes' count {} unreasonably large", _error_codes_count).into()); }
         let mut error_codes = Vec::with_capacity(_error_codes_count);
         for _ in 0.._error_codes_count {
-            error_codes.push(_codec::read_i32(buf, offset, same_endianness));
-            offset += 4;
+            error_codes.push(_codec::read_i32(buf, _ofs, same_endianness));
+            _ofs += 4;
         }
         Ok((Self {
             sensor_id,
             operational,
             error_codes,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -628,22 +628,22 @@ impl StatusMessage {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (message_id, _n_message_id) = _codec::read_string(buf, offset)?;
-        offset += _n_message_id;
-        let (timestamp, _n_timestamp) = _codec::read_string(buf, offset)?;
-        offset += _n_timestamp;
-        let (source_system_id, _n_source_system_id) = _codec::read_string(buf, offset)?;
-        offset += _n_source_system_id;
-        let state = _codec::read_i32(buf, offset, same_endianness);
-        offset += 4;
-        let _sensors_count = _codec::read_i32(buf, offset, same_endianness) as usize;
-        offset += 4;
+        let mut _ofs = 0usize;
+        let (message_id, _n_message_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_message_id;
+        let (timestamp, _n_timestamp) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_timestamp;
+        let (source_system_id, _n_source_system_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_source_system_id;
+        let state = _codec::read_i32(buf, _ofs, same_endianness);
+        _ofs += 4;
+        let _sensors_count = _codec::read_i32(buf, _ofs, same_endianness) as usize;
+        _ofs += 4;
         if _sensors_count > 65535 { return Err(format!("array 'sensors' count {} unreasonably large", _sensors_count).into()); }
         let mut sensors = Vec::with_capacity(_sensors_count);
         for _ in 0.._sensors_count {
-            let (_elem, _elem_size) = SensorStatus::decode_raw(&buf[offset..], same_endianness)?;
-            offset += _elem_size;
+            let (_elem, _elem_size) = SensorStatus::decode_raw(&buf[_ofs..], same_endianness)?;
+            _ofs += _elem_size;
             sensors.push(_elem);
         }
         Ok((Self {
@@ -652,7 +652,7 @@ impl StatusMessage {
             source_system_id,
             state,
             sensors,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -686,15 +686,15 @@ impl Credentials {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (token, _n_token) = _codec::read_bytes(buf, offset, same_endianness)?;
-        offset += _n_token;
-        let (label, _n_label) = _codec::read_string(buf, offset)?;
-        offset += _n_label;
+        let mut _ofs = 0usize;
+        let (token, _n_token) = _codec::read_bytes(buf, _ofs, same_endianness)?;
+        _ofs += _n_token;
+        let (label, _n_label) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_label;
         Ok((Self {
             token,
             label,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -720,18 +720,18 @@ impl Position {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let latitude = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
-        let longitude = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
-        let altitude = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
+        let mut _ofs = 0usize;
+        let latitude = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
+        let longitude = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
+        let altitude = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
         Ok((Self {
             latitude,
             longitude,
             altitude,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -759,18 +759,18 @@ impl Velocity {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let speed_knots = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
-        let heading_deg = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
-        let vertical_rate_fpm = _codec::read_f64(buf, offset, same_endianness);
-        offset += 8;
+        let mut _ofs = 0usize;
+        let speed_knots = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
+        let heading_deg = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
+        let vertical_rate_fpm = _codec::read_f64(buf, _ofs, same_endianness);
+        _ofs += 8;
         Ok((Self {
             speed_knots,
             heading_deg,
             vertical_rate_fpm,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
@@ -798,22 +798,22 @@ impl TrackMessage {
         buf: &[u8],
         same_endianness: bool,
     ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
-        let mut offset = 0usize;
-        let (track_id, _n_track_id) = _codec::read_string(buf, offset)?;
-        offset += _n_track_id;
-        let (timestamp, _n_timestamp) = _codec::read_string(buf, offset)?;
-        offset += _n_timestamp;
-        let category = _codec::read_i32(buf, offset, same_endianness);
-        offset += 4;
-        let quality = _codec::read_i32(buf, offset, same_endianness);
-        offset += 4;
-        let (position, _n_position) = Position::decode_raw(&buf[offset..], same_endianness)?;
-        offset += _n_position;
-        let velocity_present = _codec::read_bool(buf, offset);
-        offset += 1;
+        let mut _ofs = 0usize;
+        let (track_id, _n_track_id) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_track_id;
+        let (timestamp, _n_timestamp) = _codec::read_string(buf, _ofs)?;
+        _ofs += _n_timestamp;
+        let category = _codec::read_i32(buf, _ofs, same_endianness);
+        _ofs += 4;
+        let quality = _codec::read_i32(buf, _ofs, same_endianness);
+        _ofs += 4;
+        let (position, _n_position) = Position::decode_raw(&buf[_ofs..], same_endianness)?;
+        _ofs += _n_position;
+        let velocity_present = _codec::read_bool(buf, _ofs);
+        _ofs += 1;
         let velocity = if velocity_present {
-            let (v, n) = Velocity::decode_raw(&buf[offset..], same_endianness)?;
-            offset += n;
+            let (v, n) = Velocity::decode_raw(&buf[_ofs..], same_endianness)?;
+            _ofs += n;
             Some(v)
         } else {
             None
@@ -825,7 +825,7 @@ impl TrackMessage {
             quality,
             position: Some(position),
             velocity,
-        }, offset))
+        }, _ofs))
     }
 
     /// Encode into the custom binary wire format, appending to `buf`.
