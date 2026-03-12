@@ -3,14 +3,20 @@
 //!
 //! Parsing is two-pass:
 //! 1. Every file is parsed into raw [`ast::TypeDef`] values and inserted
-//!    into a name index.
+//!    into a name index. Primitive type aliases (`simpleType` with a
+//!    primitive restriction base) are collected separately.
 //! 2. [`resolve_extensions`] walks the index and flattens `xs:extension`
 //!    base-type fields into child types so emitters never see
 //!    [`ComplexContent::Extension`] in practice.
+//! 3. [`apply_type_aliases`] substitutes `TypeRef::Named(alias)` →
+//!    `TypeRef::Builtin(p)` for every known primitive alias.
 //!
 //! Cross-file references (a type in `alert.xsd` referencing an enum from
 //! `track.xsd`) are handled naturally because all files are loaded before
 //! any resolution step runs.
+//!
+//! Directory scanning is recursive: every `.xsd` file in any subdirectory
+//! under `dir` is included.
 
 pub mod ast;
 
@@ -24,21 +30,26 @@ use ast::*;
 
 const XS: &str = "http://www.w3.org/2001/XMLSchema";
 
-/// Load all XSD files in `dir`, resolve cross-file type references, and
-/// return a flat list of all type definitions.
+/// Load all XSD files in `dir` (recursively), resolve cross-file type
+/// references, and return a flat list of all type definitions.
 pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
     let xsd_files = collect_xsd_files(dir)?;
 
-    // First pass: parse every file into raw TypeDefs. Types may reference
-    // names that are defined in other files — we resolve that in pass two.
+    // First pass: parse every file into raw TypeDefs and collect primitive
+    // type aliases (simpleType with a non-enum restriction base).
     let mut all_types: Vec<TypeDef> = Vec::new();
     let mut type_index: HashMap<String, usize> = HashMap::new();
+    // Maps alias name → the primitive it resolves to.
+    let mut type_aliases: HashMap<String, Primitive> = HashMap::new();
 
     for path in &xsd_files {
         let src =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let doc = roxmltree::Document::parse(&src)
             .with_context(|| format!("parsing {}", path.display()))?;
+
+        // Collect primitive aliases from this file before parsing TypeDefs.
+        collect_type_aliases(&doc, &mut type_aliases);
 
         let defs = parse_document(&doc)
             .with_context(|| format!("extracting types from {}", path.display()))?;
@@ -60,26 +71,128 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
     }
 
     // Second pass: resolve xs:extension base names.
-    // For v1 we flatten extension fields inline — find the base type and
-    // prepend its fields to the child's extra_fields.
     let resolved = resolve_extensions(all_types, &type_index)?;
+
+    // Third pass: substitute primitive aliases so emitters never see
+    // unresolved TypeRef::Named for names like CUserSecurityToken.
+    let resolved = apply_type_aliases(resolved, &type_aliases);
 
     Ok(resolved)
 }
 
+/// Recursively collect all `.xsd` files under `dir`, sorted for determinism.
 fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
-    for entry in
-        std::fs::read_dir(dir).with_context(|| format!("reading directory {}", dir.display()))?
-    {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("xsd") {
-            paths.push(path);
+    let mut stack = vec![dir.to_path_buf()];
+
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current)
+            .with_context(|| format!("reading directory {}", current.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("xsd") {
+                paths.push(path);
+            }
         }
     }
+
     paths.sort();
     Ok(paths)
+}
+
+/// Scan a document for `simpleType` elements whose `xs:restriction` base is a
+/// primitive XSD type (not another named type) and has no `xs:enumeration`
+/// children.  These are type aliases like:
+///   `<xs:simpleType name="CUserSecurityToken">
+///      <xs:restriction base="xs:base64Binary"/>
+///    </xs:simpleType>`
+fn collect_type_aliases(doc: &roxmltree::Document, aliases: &mut HashMap<String, Primitive>) {
+    let root = doc.root_element();
+    for child in root.children().filter(|n| n.is_element()) {
+        if child.tag_name().name() != "simpleType" {
+            continue;
+        }
+        let name = match child.attribute("name") {
+            Some(n) => n,
+            None => continue,
+        };
+        let restriction = match find_child_ns(child, XS, "restriction") {
+            Some(r) => r,
+            None => continue,
+        };
+        // Only treat as an alias if there are no enumeration children.
+        let has_enums = restriction
+            .children()
+            .any(|n| n.is_element() && n.tag_name().name() == "enumeration");
+        if has_enums {
+            continue;
+        }
+        let base = match restriction.attribute("base") {
+            Some(b) => b,
+            None => continue,
+        };
+        if let TypeRef::Builtin(p) = resolve_type_ref(base) {
+            aliases.insert(name.to_owned(), p);
+        }
+    }
+}
+
+/// Walk all TypeDef fields and replace `TypeRef::Named(alias)` with
+/// `TypeRef::Builtin(p)` for every alias in the map.
+fn apply_type_aliases(types: Vec<TypeDef>, aliases: &HashMap<String, Primitive>) -> Vec<TypeDef> {
+    if aliases.is_empty() {
+        return types;
+    }
+    types
+        .into_iter()
+        .map(|def| match def {
+            TypeDef::Complex(ct) => TypeDef::Complex(ComplexType {
+                name: ct.name,
+                content: map_content_aliases(ct.content, aliases),
+            }),
+            other => other,
+        })
+        .collect()
+}
+
+fn map_content_aliases(
+    content: ComplexContent,
+    aliases: &HashMap<String, Primitive>,
+) -> ComplexContent {
+    match content {
+        ComplexContent::Sequence(fields) => {
+            ComplexContent::Sequence(map_fields_aliases(fields, aliases))
+        }
+        ComplexContent::Choice(fields) => {
+            ComplexContent::Choice(map_fields_aliases(fields, aliases))
+        }
+        ComplexContent::Extension { base, extra_fields } => ComplexContent::Extension {
+            base,
+            extra_fields: map_fields_aliases(extra_fields, aliases),
+        },
+    }
+}
+
+fn map_fields_aliases(fields: Vec<Field>, aliases: &HashMap<String, Primitive>) -> Vec<Field> {
+    fields
+        .into_iter()
+        .map(|f| {
+            let type_ref = match &f.type_ref {
+                TypeRef::Named(n) => {
+                    if let Some(&p) = aliases.get(n.as_str()) {
+                        TypeRef::Builtin(p)
+                    } else {
+                        f.type_ref.clone()
+                    }
+                }
+                _ => f.type_ref.clone(),
+            };
+            Field { type_ref, ..f }
+        })
+        .collect()
 }
 
 /// Parse a single XSD document and return all top-level type definitions.
@@ -352,4 +465,139 @@ fn find_child_ns<'a>(node: Node<'a, '_>, ns: &str, local: &str) -> Option<Node<'
 
 fn strip_ns_prefix(name: &str) -> &str {
     name.rfind(':').map(|i| &name[i + 1..]).unwrap_or(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Resolve the workspace-relative path to `schemas/synthetic`.
+    fn synthetic_dir() -> std::path::PathBuf {
+        // CARGO_MANIFEST_DIR = …/crates/spear-gen
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest.join("../../schemas/synthetic")
+    }
+
+    // ── recursive scanning ────────────────────────────────────────────────────
+
+    /// `collect_xsd_files` must find files in subdirectories.
+    /// `schemas/synthetic/sub/credentials.xsd` exists one level below the
+    /// root; it must appear in the collected list.
+    #[test]
+    fn collect_xsd_files_is_recursive() {
+        let dir = synthetic_dir();
+        let files = collect_xsd_files(&dir).expect("collect failed");
+
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap())
+            .collect();
+
+        assert!(
+            names.contains(&"credentials.xsd"),
+            "expected credentials.xsd in {names:?}"
+        );
+        // Top-level files must still be present.
+        assert!(names.contains(&"track.xsd"));
+        assert!(names.contains(&"alert.xsd"));
+    }
+
+    /// `load_schemas` must include the `Credentials` type defined in the
+    /// subdirectory file.
+    #[test]
+    fn load_schemas_includes_subdirectory_types() {
+        let dir = synthetic_dir();
+        let types = load_schemas(&dir).expect("load failed");
+
+        let names: Vec<_> = types.iter().map(|t| t.name()).collect();
+        assert!(
+            names.contains(&"Credentials"),
+            "expected Credentials in {names:?}"
+        );
+    }
+
+    // ── primitive type alias resolution ──────────────────────────────────────
+
+    /// `SecurityToken` is a `xs:restriction base="xs:base64Binary"` alias.
+    /// After `load_schemas` the `Token` field on `Credentials` must resolve
+    /// to `TypeRef::Builtin(Primitive::Bytes)`, not a bare `Named` ref.
+    #[test]
+    fn primitive_alias_resolves_to_builtin() {
+        let dir = synthetic_dir();
+        let types = load_schemas(&dir).expect("load failed");
+
+        let creds = types
+            .iter()
+            .find(|t| t.name() == "Credentials")
+            .expect("Credentials not found");
+
+        let fields = match creds {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("unexpected content: {other:?}"),
+            },
+            _ => panic!("expected complex type"),
+        };
+
+        let token_field = fields
+            .iter()
+            .find(|f| f.name == "Token")
+            .expect("Token field not found");
+
+        assert_eq!(
+            token_field.type_ref,
+            TypeRef::Builtin(Primitive::Bytes),
+            "SecurityToken alias should resolve to Bytes"
+        );
+    }
+
+    /// `CallSign` is a `xs:restriction base="xs:string"` alias.
+    /// The `Label` field must resolve to `TypeRef::Builtin(Primitive::String)`.
+    #[test]
+    fn string_alias_resolves_to_builtin() {
+        let dir = synthetic_dir();
+        let types = load_schemas(&dir).expect("load failed");
+
+        let creds = types
+            .iter()
+            .find(|t| t.name() == "Credentials")
+            .expect("Credentials not found");
+
+        let fields = match creds {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("unexpected content: {other:?}"),
+            },
+            _ => panic!("expected complex type"),
+        };
+
+        let label_field = fields
+            .iter()
+            .find(|f| f.name == "Label")
+            .expect("Label field not found");
+
+        assert_eq!(
+            label_field.type_ref,
+            TypeRef::Builtin(Primitive::String),
+            "CallSign alias should resolve to String"
+        );
+    }
+
+    /// Aliases must NOT produce their own `TypeDef::Simple` entries —
+    /// they are transparent to the emitter.
+    #[test]
+    fn primitive_alias_not_emitted_as_type() {
+        let dir = synthetic_dir();
+        let types = load_schemas(&dir).expect("load failed");
+
+        let names: Vec<_> = types.iter().map(|t| t.name()).collect();
+        assert!(
+            !names.contains(&"SecurityToken"),
+            "SecurityToken should not appear as a TypeDef (it's an alias)"
+        );
+        assert!(
+            !names.contains(&"CallSign"),
+            "CallSign should not appear as a TypeDef (it's an alias)"
+        );
+    }
 }

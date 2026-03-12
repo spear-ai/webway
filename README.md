@@ -82,8 +82,8 @@ XSD → proto3/Rust mapping rules.
 
 ## Synthetic schemas
 
-`schemas/synthetic/` contains three representative XSD files used for
-local development and CI. The classified-side XSDs drop in as a direct
+`schemas/synthetic/` contains representative XSD files used for local
+development and CI. The classified-side XSDs drop in as a direct
 replacement.
 
 | File | Demonstrates |
@@ -91,6 +91,7 @@ replacement.
 | `track.xsd` | Nested complex types, optional fields, enumerations |
 | `alert.xsd` | `xs:choice`, `maxOccurs="unbounded"`, cross-file enum refs |
 | `status.xsd` | `xs:extension` (inheritance), 3-level nesting, plain string enums |
+| `sub/credentials.xsd` | Subdirectory scanning, primitive type aliases (`xs:base64Binary` → `Vec<u8>`) |
 
 ---
 

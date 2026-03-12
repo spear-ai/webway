@@ -39,6 +39,32 @@ any consumer-facing schema versioning bump.
 
 ## Structural constructs
 
+### `xs:simpleType` — primitive type alias
+
+A `simpleType` whose restriction base is a primitive XSD type and has no
+`xs:enumeration` children is treated as a **transparent alias**.
+
+```xml
+<xs:simpleType name="SecurityToken">
+  <xs:restriction base="xs:base64Binary"/>
+</xs:simpleType>
+```
+
+`spear-gen` resolves every field reference to `SecurityToken` directly to
+the underlying primitive (`Vec<u8>` in this case). The alias type itself is
+**not** emitted as a standalone struct or enum — it is invisible to the
+emitter and to consumers.
+
+| Alias base | Rust type |
+|---|---|
+| `xs:base64Binary` / `xs:hexBinary` | `Vec<u8>` |
+| `xs:string` / `xs:token` / etc. | `String` |
+| `xs:int` / `xs:integer` / etc. | `i32` |
+| `xs:boolean` | `bool` |
+| (other primitives) | per primitive table above |
+
+---
+
 ### `xs:simpleType` with `xs:enumeration`
 
 The XSD source uses a non-standard convention where the integer value is
@@ -176,16 +202,17 @@ affects the child — it does not remove the base from the output.
 
 ---
 
-### Cross-file references
+### Cross-file and cross-directory references
 
-All `.xsd` files in the input directory are loaded in a single pass before
-any type resolution runs. A type defined in `track.xsd` can be referenced by
-name in `alert.xsd` without any explicit `xs:import` handling — as long as
-both files are in the same directory.
+All `.xsd` files under the input directory are discovered recursively before
+any type resolution runs. Subdirectories are walked automatically — there is
+no need to pass multiple `--input` flags. A type defined in
+`sub/credentials.xsd` can be referenced by name from `track.xsd` without any
+special configuration.
 
 `xs:import` and `xs:include` elements are recognized and ignored (the
-directory scan handles loading). `schemaLocation` attributes are not
-followed.
+recursive directory scan handles loading). `schemaLocation` attributes are
+not followed.
 
 ---
 
@@ -208,6 +235,24 @@ not expected to be an issue for these XSD files but worth noting.
 
 XSD element names are preserved exactly via `#[serde(rename)]` on Rust
 fields so that XML deserialization works against the original element names.
+
+---
+
+## Binary wire format summary
+
+The custom binary format used by `encode_raw` / `decode_raw`:
+
+| Rust type | Wire encoding |
+|---|---|
+| `bool` | 1 byte (0 or 1) |
+| `i32` / `u32` / enum | 4 bytes, host or swapped depending on `same_endianness` |
+| `i64` / `u64` | 8 bytes, host or swapped |
+| `f32` | 4 bytes (IEEE 754), endianness-swapped as u32 bits |
+| `f64` | 8 bytes (IEEE 754), endianness-swapped as u64 bits |
+| `String` | Null-terminated UTF-8; empty string = single `0x00` byte |
+| `Vec<u8>` (bytes) | 4-byte `i32` length prefix + raw bytes (endianness-aware length) |
+| `Option<ComplexType>` | 1-byte presence flag (0 = absent, 1 = present) + encoded body if present |
+| `Vec<T>` (array) | 4-byte `i32` element count + each element encoded in order |
 
 ---
 

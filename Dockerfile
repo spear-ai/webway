@@ -22,6 +22,7 @@ FROM --platform=linux/amd64 rust:1.84-slim-bookworm
 # System build dependencies.
 # cmake + libcurl are required to compile rdkafka-sys.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
         cmake \
         libcurl4-openssl-dev \
         pkg-config \

@@ -563,9 +563,7 @@ dependencies = [
  "anyhow",
  "clap",
  "prost",
- "rdkafka",
- "spear-lib",
- "tokio",
+ "serde",
 ]
 
 [[package]]
@@ -574,7 +572,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "prost",
  "roxmltree",
+ "serde",
 ]
 
 [[package]]

@@ -116,6 +116,28 @@ mod _codec {
             buf.push(0);
         }
     }
+    /// Read a length-prefixed byte blob. Returns (bytes, total_bytes_consumed).
+    /// Wire format: i32 length prefix (same_endianness) + raw bytes.
+    pub fn read_bytes(
+        buf: &[u8],
+        offset: usize,
+        same_endianness: bool,
+    ) -> Result<(Vec<u8>, usize), Box<dyn std::error::Error + Send + Sync>> {
+        if buf.len() < offset + 4 {
+            return Err("buffer too short for bytes length prefix".into());
+        }
+        let len = read_i32(buf, offset, same_endianness) as usize;
+        let start = offset + 4;
+        if buf.len() < start + len {
+            return Err(format!("buffer too short for bytes payload (need {len})").into());
+        }
+        Ok((buf[start..start + len].to_vec(), 4 + len))
+    }
+    /// Write a length-prefixed byte blob.
+    pub fn write_bytes(buf: &mut Vec<u8>, v: &[u8], same_endianness: bool) {
+        write_i32(buf, v.len() as i32, same_endianness);
+        buf.extend_from_slice(v);
+    }
 }
 
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
@@ -272,6 +294,18 @@ pub struct StatusMessage {
     pub sensors: Vec<SensorStatus>,
 }
 
+#[derive(Clone, PartialEq)]
+#[derive(Message)]
+#[derive(Serialize, Deserialize)]
+pub struct Credentials {
+    #[prost(bytes, tag="1")]
+    #[serde(rename = "Token")]
+    pub token: Vec<u8>,
+    #[prost(string, tag="2")]
+    #[serde(rename = "Label")]
+    pub label: String,
+}
+
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
@@ -426,9 +460,9 @@ impl AlertMessage {
         if _related_track_ids_count > 65535 { return Err(format!("array 'related_track_ids' count {} unreasonably large", _related_track_ids_count).into()); }
         let mut related_track_ids = Vec::with_capacity(_related_track_ids_count);
         for _ in 0.._related_track_ids_count {
-            let (item, item_n) = _codec::read_string(buf, offset)?;
-            offset += item_n;
-            related_track_ids.push(item);
+            let (_elem, _elem_n) = _codec::read_string(buf, offset)?;
+            offset += _elem_n;
+            related_track_ids.push(_elem);
         }
         Ok((Self {
             alert_id,
@@ -576,9 +610,9 @@ impl StatusMessage {
         if _sensors_count > 65535 { return Err(format!("array 'sensors' count {} unreasonably large", _sensors_count).into()); }
         let mut sensors = Vec::with_capacity(_sensors_count);
         for _ in 0.._sensors_count {
-            let (item, item_size) = SensorStatus::decode_raw(&buf[offset..], same_endianness)?;
-            offset += item_size;
-            sensors.push(item);
+            let (_elem, _elem_size) = SensorStatus::decode_raw(&buf[offset..], same_endianness)?;
+            offset += _elem_size;
+            sensors.push(_elem);
         }
         Ok((Self {
             message_id,
@@ -608,6 +642,40 @@ impl StatusMessage {
         size += 4;
         size += 4;
         size += self.sensors.iter().map(|e| e.encoded_size()).sum::<usize>();
+        size
+    }
+}
+
+#[allow(unused_variables, unused_mut)]
+impl Credentials {
+    /// Decode from the custom binary wire format.
+    /// Returns the decoded value and the number of bytes consumed.
+    pub fn decode_raw(
+        buf: &[u8],
+        same_endianness: bool,
+    ) -> Result<(Self, usize), Box<dyn std::error::Error + Send + Sync>> {
+        let mut offset = 0usize;
+        let (token, _n_token) = _codec::read_bytes(buf, offset, same_endianness)?;
+        offset += _n_token;
+        let (label, _n_label) = _codec::read_string(buf, offset)?;
+        offset += _n_label;
+        Ok((Self {
+            token,
+            label,
+        }, offset))
+    }
+
+    /// Encode into the custom binary wire format, appending to `buf`.
+    pub fn encode_raw(&self, buf: &mut Vec<u8>, same_endianness: bool) {
+        _codec::write_bytes(buf, &self.token, same_endianness);
+        _codec::write_string(buf, &self.label);
+    }
+
+    /// Returns the number of bytes this value occupies in the binary wire format.
+    pub fn encoded_size(&self) -> usize {
+        let mut size = 0usize;
+        size += 4 + self.token.len();
+        size += if self.label.is_empty() { 1 } else { self.label.len() + 1 };
         size
     }
 }

@@ -170,6 +170,28 @@ fn emit_codec_helpers(out: &mut String) {
             buf.push(0);
         }
     }
+    /// Read a length-prefixed byte blob. Returns (bytes, total_bytes_consumed).
+    /// Wire format: i32 length prefix (same_endianness) + raw bytes.
+    pub fn read_bytes(
+        buf: &[u8],
+        offset: usize,
+        same_endianness: bool,
+    ) -> Result<(Vec<u8>, usize), Box<dyn std::error::Error + Send + Sync>> {
+        if buf.len() < offset + 4 {
+            return Err("buffer too short for bytes length prefix".into());
+        }
+        let len = read_i32(buf, offset, same_endianness) as usize;
+        let start = offset + 4;
+        if buf.len() < start + len {
+            return Err(format!("buffer too short for bytes payload (need {len})").into());
+        }
+        Ok((buf[start..start + len].to_vec(), 4 + len))
+    }
+    /// Write a length-prefixed byte blob.
+    pub fn write_bytes(buf: &mut Vec<u8>, v: &[u8], same_endianness: bool) {
+        write_i32(buf, v.len() as i32, same_endianness);
+        buf.extend_from_slice(v);
+    }
 }
 
 "#,
@@ -341,6 +363,12 @@ fn emit_field_decode(f: &Field, all_types: &[TypeDef], out: &mut String) {
         TypeRef::Builtin(p) => {
             let m = map_primitive(*p);
             match m.byte_size {
+                0 if m.rust_type == "Vec<u8>" => {
+                    out.push_str(&format!(
+                        "        let ({fname}, _n_{fname}) = _codec::read_bytes(buf, offset, same_endianness)?;\n"
+                    ));
+                    out.push_str(&format!("        offset += _n_{fname};\n"));
+                }
                 0 => {
                     out.push_str(&format!(
                         "        let ({fname}, _n_{fname}) = _codec::read_string(buf, offset)?;\n"
@@ -432,13 +460,20 @@ fn emit_array_decode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
     match &f.type_ref {
         TypeRef::Builtin(p) => {
             let m = map_primitive(*p);
-            if m.byte_size == 0 {
+            if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
+                // length-prefixed bytes in array
+                out.push_str(
+                    "            let (_elem, _elem_n) = _codec::read_bytes(buf, offset, same_endianness)?;\n",
+                );
+                out.push_str("            offset += _elem_n;\n");
+                out.push_str(&format!("            {fname}.push(_elem);\n"));
+            } else if m.byte_size == 0 {
                 // variable-length string in array
                 out.push_str(
-                    "            let (item, item_n) = _codec::read_string(buf, offset)?;\n",
+                    "            let (_elem, _elem_n) = _codec::read_string(buf, offset)?;\n",
                 );
-                out.push_str("            offset += item_n;\n");
-                out.push_str(&format!("            {fname}.push(item);\n"));
+                out.push_str("            offset += _elem_n;\n");
+                out.push_str(&format!("            {fname}.push(_elem);\n"));
             } else {
                 let (read_expr, size) = primitive_read_expr_and_size(m.rust_type, m.byte_size);
                 out.push_str(&format!("            {fname}.push({read_expr});\n"));
@@ -453,10 +488,10 @@ fn emit_array_decode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
                 out.push_str("            offset += 4;\n");
             } else {
                 out.push_str(&format!(
-                    "            let (item, item_size) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
+                    "            let (_elem, _elem_size) = {name}::decode_raw(&buf[offset..], same_endianness)?;\n"
                 ));
-                out.push_str("            offset += item_size;\n");
-                out.push_str(&format!("            {fname}.push(item);\n"));
+                out.push_str("            offset += _elem_size;\n");
+                out.push_str(&format!("            {fname}.push(_elem);\n"));
             }
         }
     }
@@ -478,6 +513,11 @@ fn emit_field_encode(f: &Field, all_types: &[TypeDef], out: &mut String) {
         TypeRef::Builtin(p) => {
             let m = map_primitive(*p);
             match m.byte_size {
+                0 if m.rust_type == "Vec<u8>" => {
+                    out.push_str(&format!(
+                        "        _codec::write_bytes(buf, &self.{fname}, same_endianness);\n"
+                    ));
+                }
                 0 => {
                     out.push_str(&format!(
                         "        _codec::write_string(buf, &self.{fname});\n"
@@ -544,7 +584,11 @@ fn emit_array_encode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
     match &f.type_ref {
         TypeRef::Builtin(p) => {
             let m = map_primitive(*p);
-            if m.byte_size == 0 {
+            if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
+                out.push_str(&format!(
+                    "        for item in &self.{fname} {{ _codec::write_bytes(buf, item, same_endianness); }}\n"
+                ));
+            } else if m.byte_size == 0 {
                 out.push_str(&format!(
                     "        for item in &self.{fname} {{ _codec::write_string(buf, item); }}\n"
                 ));
@@ -594,7 +638,10 @@ fn emit_field_size(f: &Field, all_types: &[TypeDef], out: &mut String) {
         match &f.type_ref {
             TypeRef::Builtin(p) => {
                 let m = map_primitive(*p);
-                let elem_size = if m.byte_size == 0 {
+                let elem_size = if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
+                    // each element: 4-byte length prefix + payload
+                    format!("self.{fname}.iter().map(|b| 4 + b.len()).sum::<usize>()")
+                } else if m.byte_size == 0 {
                     format!(
                         "self.{fname}.iter().map(|s| if s.is_empty() {{ 1 }} else {{ s.len() + 1 }}).sum::<usize>()"
                     )
@@ -619,7 +666,10 @@ fn emit_field_size(f: &Field, all_types: &[TypeDef], out: &mut String) {
     match &f.type_ref {
         TypeRef::Builtin(p) => {
             let m = map_primitive(*p);
-            if m.byte_size == 0 {
+            if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
+                // length-prefixed bytes: 4-byte length + payload
+                out.push_str(&format!("        size += 4 + self.{fname}.len();\n"));
+            } else if m.byte_size == 0 {
                 // null-terminated string — always T in the struct
                 out.push_str(&format!(
                     "        size += if self.{fname}.is_empty() {{ 1 }} else {{ self.{fname}.len() + 1 }};\n"

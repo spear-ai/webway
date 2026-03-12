@@ -163,6 +163,40 @@ fn alert_message_roundtrip() {
     assert_eq!(original, decoded);
 }
 
+// ── Credentials (Vec<u8> bytes field from primitive alias) ────────────────────
+
+#[test]
+fn credentials_bytes_roundtrip() {
+    let original = Credentials {
+        token: vec![0xde, 0xad, 0xbe, 0xef, 0x00, 0xff],
+        label: "ALPHA-1".to_string(),
+    };
+
+    let mut buf = Vec::new();
+    original.encode_raw(&mut buf, true);
+    assert_eq!(buf.len(), original.encoded_size(), "encoded_size mismatch");
+
+    let (decoded, consumed) = Credentials::decode_raw(&buf, true).unwrap();
+    assert_eq!(consumed, buf.len(), "not all bytes consumed");
+    assert_eq!(original, decoded);
+}
+
+#[test]
+fn credentials_empty_token_roundtrip() {
+    let original = Credentials {
+        token: vec![],
+        label: String::new(),
+    };
+
+    let mut buf = Vec::new();
+    original.encode_raw(&mut buf, true);
+    assert_eq!(buf.len(), original.encoded_size());
+
+    let (decoded, consumed) = Credentials::decode_raw(&buf, true).unwrap();
+    assert_eq!(consumed, buf.len());
+    assert_eq!(original, decoded);
+}
+
 // ── endianness ────────────────────────────────────────────────────────────────
 
 #[test]

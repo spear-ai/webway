@@ -60,7 +60,7 @@ pub struct Field {
     pub repeated: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeRef {
     /// Built-in XSD primitive (xs:string, xs:int, etc.)
     Builtin(Primitive),
