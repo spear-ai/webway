@@ -255,6 +255,7 @@ fn emit_impl(t: &ComplexType, all_types: &[TypeDef], out: &mut String) {
     };
     let is_choice = matches!(&t.content, ComplexContent::Choice(_));
 
+    out.push_str("#[allow(unused_variables, unused_mut)]\n");
     out.push_str(&format!("impl {} {{\n", t.name));
 
     // ── decode_raw ──

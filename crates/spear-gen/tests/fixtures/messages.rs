@@ -354,6 +354,7 @@ pub struct TrackMessage {
     pub velocity: Option<Velocity>,
 }
 
+#[allow(unused_variables, unused_mut)]
 impl AlertSource {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -393,6 +394,7 @@ impl AlertSource {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl AlertMessage {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -460,6 +462,7 @@ impl AlertMessage {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl BaseMessage {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -498,6 +501,7 @@ impl BaseMessage {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl SensorStatus {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -544,6 +548,7 @@ impl SensorStatus {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl StatusMessage {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -601,6 +606,7 @@ impl StatusMessage {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl Position {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -639,6 +645,7 @@ impl Position {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl Velocity {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
@@ -677,6 +684,7 @@ impl Velocity {
     }
 }
 
+#[allow(unused_variables, unused_mut)]
 impl TrackMessage {
     /// Decode from the custom binary wire format.
     /// Returns the decoded value and the number of bytes consumed.
