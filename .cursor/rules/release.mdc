@@ -21,19 +21,28 @@ builds four binaries and attaches them to a GitHub release automatically.
    cargo test
    ```
 
-3. Choose a version number following semver:
+3. Bump the version in `crates/spear-gen/Cargo.toml` to match the new version
+   number. The release CI will fail if the tag and `Cargo.toml` version don't
+   match, and `spear-gen --version` will be wrong if you skip this step.
+   ```toml
+   # crates/spear-gen/Cargo.toml
+   version = "0.2.11"  # ← set to the new version
+   ```
+   Commit this change to `main` before tagging.
+
+4. Choose a version number following semver:
    - Bump **patch** (`v0.1.1`) for bug fixes
    - Bump **minor** (`v0.2.0`) for new features that are backwards compatible
    - Bump **major** (`v1.0.0`) for breaking changes (also requires a schema
      version bump in `ProtoEnvelope` and a new parallel Redpanda topic)
 
-4. Create and push the tag:
+5. Create and push the tag:
    ```bash
    git tag v<version>
    git push origin v<version>
    ```
 
-5. Watch the release workflow at:
+6. Watch the release workflow at:
    `https://github.com/Codykilpatrick/webway/actions`
 
    It will build and attach four binaries to the release:
@@ -42,7 +51,7 @@ builds four binaries and attaches them to a GitHub release automatically.
    - `spear-gen-macos-arm64.tar.gz`
    - `spear-gen-macos-x86_64.tar.gz`
 
-6. The release is created automatically at:
+7. The release is created automatically at:
    `https://github.com/Codykilpatrick/webway/releases`
 
 ## If a release build fails
