@@ -118,6 +118,7 @@ mod _codec {
     }
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]
@@ -131,6 +132,7 @@ pub enum AlertSeverity {
     Critical = 2,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]
@@ -187,6 +189,7 @@ pub struct AlertMessage {
     pub related_track_ids: Vec<String>,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]
@@ -200,6 +203,7 @@ pub enum RecordMode {
     DATA_RECORD_PAUSED = 2,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]
@@ -268,6 +272,7 @@ pub struct StatusMessage {
     pub sensors: Vec<SensorStatus>,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]
@@ -285,6 +290,7 @@ pub enum TrackCategory {
     Land = 4,
 }
 
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[derive(Serialize, Deserialize)]
 #[derive(prost::Enumeration)]

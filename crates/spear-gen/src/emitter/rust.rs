@@ -179,6 +179,7 @@ fn emit_codec_helpers(out: &mut String) {
 // ── struct / enum emit ────────────────────────────────────────────────────────
 
 fn emit_enum(t: &SimpleType, out: &mut String) {
+    out.push_str("#[allow(non_camel_case_types, clippy::upper_case_acronyms)]\n");
     out.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]\n");
     out.push_str("#[derive(Serialize, Deserialize)]\n");
     out.push_str("#[derive(prost::Enumeration)]\n");
