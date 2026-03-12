@@ -45,6 +45,14 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
 
         for def in defs {
             let name = def.name().to_owned();
+            if type_index.contains_key(&name) {
+                eprintln!(
+                    "warning: duplicate type '{}' in {}; keeping first definition",
+                    name,
+                    path.display()
+                );
+                continue;
+            }
             let idx = all_types.len();
             all_types.push(def);
             type_index.insert(name, idx);

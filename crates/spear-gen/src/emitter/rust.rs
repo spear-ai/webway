@@ -184,7 +184,19 @@ fn emit_enum(t: &SimpleType, out: &mut String) {
     out.push_str("#[derive(prost::Enumeration)]\n");
     out.push_str("#[repr(i32)]\n");
     out.push_str(&format!("pub enum {} {{\n", t.name));
+
+    // prost generates a from_i32 match — duplicate discriminants are a compile
+    // error. C enums allow aliased values; we keep the first variant per number
+    // and emit a comment for any that are skipped.
+    let mut seen: std::collections::HashSet<i32> = std::collections::HashSet::new();
     for v in &t.variants {
+        if !seen.insert(v.number) {
+            out.push_str(&format!(
+                "    // skipped alias: {} = {} (duplicate discriminant)\n",
+                v.name, v.number
+            ));
+            continue;
+        }
         out.push_str(&format!("    #[serde(rename = \"{}\")]\n", v.name));
         out.push_str(&format!("    {} = {},\n", v.name, v.number));
     }
