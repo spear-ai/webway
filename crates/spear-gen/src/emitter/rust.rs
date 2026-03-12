@@ -587,11 +587,11 @@ fn emit_array_encode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
             let m = map_primitive(*p);
             if m.byte_size == 0 && m.rust_type == "Vec<u8>" {
                 out.push_str(&format!(
-                    "        for item in &self.{fname} {{ _codec::write_bytes(buf, item, same_endianness); }}\n"
+                    "        for _item in &self.{fname} {{ _codec::write_bytes(buf, _item, same_endianness); }}\n"
                 ));
             } else if m.byte_size == 0 {
                 out.push_str(&format!(
-                    "        for item in &self.{fname} {{ _codec::write_string(buf, item); }}\n"
+                    "        for _item in &self.{fname} {{ _codec::write_string(buf, _item); }}\n"
                 ));
             } else {
                 let write_fn = match m.rust_type {
@@ -606,11 +606,11 @@ fn emit_array_encode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
                 };
                 if m.byte_size == 1 {
                     out.push_str(&format!(
-                        "        for &item in &self.{fname} {{ _codec::{write_fn}(buf, item); }}\n"
+                        "        for &_item in &self.{fname} {{ _codec::{write_fn}(buf, _item); }}\n"
                     ));
                 } else {
                     out.push_str(&format!(
-                        "        for &item in &self.{fname} {{ _codec::{write_fn}(buf, item, same_endianness); }}\n"
+                        "        for &_item in &self.{fname} {{ _codec::{write_fn}(buf, _item, same_endianness); }}\n"
                     ));
                 }
             }
@@ -618,11 +618,11 @@ fn emit_array_encode(f: &Field, all_types: &[TypeDef], out: &mut String, fname: 
         TypeRef::Named(name) => {
             if is_enum_type(name, all_types) {
                 out.push_str(&format!(
-                    "        for &item in &self.{fname} {{ _codec::write_i32(buf, item, same_endianness); }}\n"
+                    "        for &_item in &self.{fname} {{ _codec::write_i32(buf, _item, same_endianness); }}\n"
                 ));
             } else {
                 out.push_str(&format!(
-                    "        for item in &self.{fname} {{ item.encode_raw(buf, same_endianness); }}\n"
+                    "        for _item in &self.{fname} {{ _item.encode_raw(buf, same_endianness); }}\n"
                 ));
             }
         }

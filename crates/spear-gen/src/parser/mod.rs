@@ -39,8 +39,11 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
     // type aliases (simpleType with a non-enum restriction base).
     let mut all_types: Vec<TypeDef> = Vec::new();
     let mut type_index: HashMap<String, usize> = HashMap::new();
-    // Maps alias name → the primitive it resolves to.
+    // Direct aliases: name → Primitive (e.g. CToken → Bytes)
     let mut type_aliases: HashMap<String, Primitive> = HashMap::new();
+    // Pending: name → base type name not yet resolved to a primitive.
+    // Used to resolve chained aliases (A restricts B which restricts xs:base64Binary).
+    let mut pending_aliases: HashMap<String, String> = HashMap::new();
 
     for path in &xsd_files {
         let src =
@@ -49,7 +52,7 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
             .with_context(|| format!("parsing {}", path.display()))?;
 
         // Collect primitive aliases from this file before parsing TypeDefs.
-        collect_type_aliases(&doc, &mut type_aliases);
+        collect_type_aliases(&doc, &mut type_aliases, &mut pending_aliases);
 
         let defs = parse_document(&doc)
             .with_context(|| format!("extracting types from {}", path.display()))?;
@@ -70,6 +73,33 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
         }
     }
 
+    // Resolve chained aliases iteratively:
+    // e.g. A restricts B, B restricts xs:base64Binary → both become Bytes.
+    loop {
+        let mut resolved_any = false;
+        pending_aliases.retain(|name, base| {
+            if let Some(&p) = type_aliases.get(base.as_str()) {
+                type_aliases.insert(name.clone(), p);
+                resolved_any = true;
+                false // resolved — remove from pending
+            } else if let TypeRef::Builtin(p) = resolve_type_ref(base) {
+                type_aliases.insert(name.clone(), p);
+                resolved_any = true;
+                false
+            } else {
+                true // still unresolved — keep
+            }
+        });
+        if !resolved_any {
+            break;
+        }
+    }
+
+    eprintln!(
+        "spear-gen: resolved {} primitive type alias(es)",
+        type_aliases.len()
+    );
+
     // Second pass: resolve xs:extension base names.
     let resolved = resolve_extensions(all_types, &type_index)?;
 
@@ -81,6 +111,8 @@ pub fn load_schemas(dir: &Path) -> Result<Vec<TypeDef>> {
 }
 
 /// Recursively collect all `.xsd` files under `dir`, sorted for determinism.
+/// Uses `entry.file_type()` (does not follow symlinks) to avoid infinite
+/// loops if the directory tree contains circular symlinks.
 fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -90,12 +122,21 @@ fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
             .with_context(|| format!("reading directory {}", current.display()))?
         {
             let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("xsd") {
-                paths.push(path);
+            let ft = entry
+                .file_type()
+                .with_context(|| format!("stat {}", entry.path().display()))?;
+            if ft.is_dir() {
+                stack.push(entry.path());
+            } else if ft.is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    == Some("xsd")
+            {
+                paths.push(entry.path());
             }
+            // symlinks are intentionally skipped
         }
     }
 
@@ -103,22 +144,27 @@ fn collect_xsd_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// Scan a document for `simpleType` elements whose `xs:restriction` base is a
-/// primitive XSD type (not another named type) and has no `xs:enumeration`
-/// children.  These are type aliases like:
-///   `<xs:simpleType name="CUserSecurityToken">
-///      <xs:restriction base="xs:base64Binary"/>
-///    </xs:simpleType>`
-fn collect_type_aliases(doc: &roxmltree::Document, aliases: &mut HashMap<String, Primitive>) {
+/// Scan a document for `simpleType` elements whose `xs:restriction` base has
+/// no `xs:enumeration` children.  Direct primitive restrictions go straight
+/// into `aliases`; restrictions whose base is another named type go into
+/// `pending` for transitive resolution after all files are loaded.
+fn collect_type_aliases(
+    doc: &roxmltree::Document,
+    aliases: &mut HashMap<String, Primitive>,
+    pending: &mut HashMap<String, String>,
+) {
     let root = doc.root_element();
     for child in root.children().filter(|n| n.is_element()) {
         if child.tag_name().name() != "simpleType" {
             continue;
         }
         let name = match child.attribute("name") {
-            Some(n) => n,
+            Some(n) => n.trim(),
             None => continue,
         };
+        if name.is_empty() {
+            continue;
+        }
         let restriction = match find_child_ns(child, XS, "restriction") {
             Some(r) => r,
             None => continue,
@@ -131,11 +177,18 @@ fn collect_type_aliases(doc: &roxmltree::Document, aliases: &mut HashMap<String,
             continue;
         }
         let base = match restriction.attribute("base") {
-            Some(b) => b,
+            Some(b) => b.trim(),
             None => continue,
         };
-        if let TypeRef::Builtin(p) = resolve_type_ref(base) {
-            aliases.insert(name.to_owned(), p);
+        match resolve_type_ref(base) {
+            TypeRef::Builtin(p) => {
+                aliases.insert(name.to_owned(), p);
+            }
+            TypeRef::Named(named_base) => {
+                // Chain: this alias's base is itself a named type.
+                // Record it for transitive resolution.
+                pending.insert(name.to_owned(), named_base);
+            }
         }
     }
 }
@@ -238,7 +291,7 @@ fn parse_document(doc: &roxmltree::Document) -> Result<Vec<TypeDef>> {
 
 fn parse_simple_type(node: Node) -> Result<Option<SimpleType>> {
     let name = match node.attribute("name") {
-        Some(n) => n.to_owned(),
+        Some(n) => n.trim().to_owned(),
         None => return Ok(None),
     };
 
@@ -294,7 +347,7 @@ fn parse_enum_variant(raw: &str) -> Result<EnumVariant> {
 }
 
 fn parse_complex_type(node: Node) -> Result<Option<ComplexType>> {
-    let name = node.attribute("name").unwrap_or("").to_owned();
+    let name = node.attribute("name").unwrap_or("").trim().to_owned();
 
     // xs:sequence
     if let Some(seq) = find_child_ns(node, XS, "sequence") {
@@ -351,12 +404,15 @@ fn parse_fields(parent: Node) -> Result<Vec<Field>> {
             continue;
         }
         let name = match child.attribute("name") {
-            Some(n) => n.to_owned(),
+            Some(n) => n.trim().to_owned(),
             None => continue,
         };
+        if name.is_empty() {
+            continue;
+        }
 
         let type_ref = if let Some(t) = child.attribute("type") {
-            resolve_type_ref(t)
+            resolve_type_ref(t.trim())
         } else if find_child_ns(child, XS, "complexType").is_some()
             || find_child_ns(child, XS, "simpleType").is_some()
         {
@@ -386,7 +442,7 @@ fn parse_fields(parent: Node) -> Result<Vec<Field>> {
 }
 
 fn resolve_type_ref(raw: &str) -> TypeRef {
-    let name = strip_ns_prefix(raw);
+    let name = strip_ns_prefix(raw).trim();
     match name {
         "string" | "normalizedString" | "token" | "NMTOKEN" | "ID" | "IDREF" | "anyURI"
         | "date" | "dateTime" | "time" | "duration" | "gYear" | "gMonth" | "gDay" => {

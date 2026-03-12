@@ -507,7 +507,7 @@ impl AlertMessage {
         if let Some(v) = &self.source { v.encode_raw(buf, same_endianness); }
         _codec::write_string(buf, &self.description);
         _codec::write_i32(buf, self.related_track_ids.len() as i32, same_endianness);
-        for item in &self.related_track_ids { _codec::write_string(buf, item); }
+        for _item in &self.related_track_ids { _codec::write_string(buf, _item); }
     }
 
     /// Returns the number of bytes this value occupies in the binary wire format.
@@ -597,7 +597,7 @@ impl SensorStatus {
         _codec::write_string(buf, &self.sensor_id);
         _codec::write_bool(buf, self.operational);
         _codec::write_i32(buf, self.error_codes.len() as i32, same_endianness);
-        for &item in &self.error_codes { _codec::write_i32(buf, item, same_endianness); }
+        for &_item in &self.error_codes { _codec::write_i32(buf, _item, same_endianness); }
     }
 
     /// Returns the number of bytes this value occupies in the binary wire format.
@@ -653,7 +653,7 @@ impl StatusMessage {
         _codec::write_string(buf, &self.source_system_id);
         _codec::write_i32(buf, self.state, same_endianness);
         _codec::write_i32(buf, self.sensors.len() as i32, same_endianness);
-        for item in &self.sensors { item.encode_raw(buf, same_endianness); }
+        for _item in &self.sensors { _item.encode_raw(buf, same_endianness); }
     }
 
     /// Returns the number of bytes this value occupies in the binary wire format.
