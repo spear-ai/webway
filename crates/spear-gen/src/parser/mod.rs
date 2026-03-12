@@ -402,6 +402,9 @@ fn resolve_type_ref(raw: &str) -> TypeRef {
         "float" => TypeRef::Builtin(Primitive::Float),
         "double" | "decimal" => TypeRef::Builtin(Primitive::Double),
         "base64Binary" | "hexBinary" => TypeRef::Builtin(Primitive::Bytes),
+        // Java/.NET-style array notation sometimes found in vendor XSDs
+        "byte[]" | "Byte[]" => TypeRef::Builtin(Primitive::Bytes),
+        "string[]" | "String[]" => TypeRef::Builtin(Primitive::String),
         other => TypeRef::Named(other.to_owned()),
     }
 }

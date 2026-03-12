@@ -220,6 +220,7 @@ fn emit_enum(t: &SimpleType, out: &mut String) {
             ));
             continue;
         }
+        out.push_str("    #[allow(non_camel_case_types)]\n");
         out.push_str(&format!("    #[serde(rename = \"{}\")]\n", v.name));
         out.push_str(&format!("    {} = {},\n", v.name, v.number));
     }

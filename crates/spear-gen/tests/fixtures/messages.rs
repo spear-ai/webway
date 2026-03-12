@@ -146,10 +146,13 @@ mod _codec {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum AlertSeverity {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Info")]
     Info = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Warning")]
     Warning = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Critical")]
     Critical = 2,
 }
@@ -160,10 +163,13 @@ pub enum AlertSeverity {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum AlertType {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "SystemAlert")]
     SystemAlert = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "TrackAlert")]
     TrackAlert = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "SensorAlert")]
     SensorAlert = 2,
 }
@@ -217,10 +223,13 @@ pub struct AlertMessage {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum RecordMode {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "DATA_RECORD_OFF")]
     DATA_RECORD_OFF = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "DATA_RECORD_ON")]
     DATA_RECORD_ON = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "DATA_RECORD_PAUSED")]
     DATA_RECORD_PAUSED = 2,
 }
@@ -231,14 +240,19 @@ pub enum RecordMode {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum SystemState {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Offline")]
     Offline = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Initializing")]
     Initializing = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Operational")]
     Operational = 2,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Degraded")]
     Degraded = 3,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Fault")]
     Fault = 4,
 }
@@ -312,14 +326,19 @@ pub struct Credentials {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum TrackCategory {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Unknown")]
     Unknown = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Air")]
     Air = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Surface")]
     Surface = 2,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Subsurface")]
     Subsurface = 3,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Land")]
     Land = 4,
 }
@@ -330,12 +349,16 @@ pub enum TrackCategory {
 #[derive(prost::Enumeration)]
 #[repr(i32)]
 pub enum TrackQuality {
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Poor")]
     Poor = 0,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Fair")]
     Fair = 1,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Good")]
     Good = 2,
+    #[allow(non_camel_case_types)]
     #[serde(rename = "Excellent")]
     Excellent = 3,
 }
