@@ -762,11 +762,31 @@ fn field_base_type(type_ref: &TypeRef, all_types: &[TypeDef], tag: u32) -> (Stri
 
 fn snake_case(s: &str) -> String {
     let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            out.push('_');
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '_' {
+            // Preserve existing underscores but never double them.
+            if !out.ends_with('_') {
+                out.push('_');
+            }
+        } else if c.is_uppercase() {
+            if i > 0 && !out.ends_with('_') {
+                let prev = chars[i - 1];
+                // Insert underscore at a camelCase boundary (lower→upper)
+                // or at the end of an uppercase run before lowercase
+                // (e.g. "SPSBFCommand" → "spsbf_command", not "s_p_s_b_f_command").
+                let next_is_lower = chars.get(i + 1).map(|c| c.is_lowercase()).unwrap_or(false);
+                if prev.is_lowercase()
+                    || prev.is_ascii_digit()
+                    || (prev.is_uppercase() && next_is_lower)
+                {
+                    out.push('_');
+                }
+            }
+            out.push(c.to_lowercase().next().unwrap_or(c));
+        } else {
+            out.push(c);
         }
-        out.push(c.to_lowercase().next().unwrap());
     }
     out
 }
@@ -780,5 +800,44 @@ fn escape_keyword(s: &str) -> String {
         | "abstract" | "become" | "box" | "do" | "final" | "macro" | "override" | "priv"
         | "try" | "typeof" | "unsized" | "virtual" | "yield" => format!("{s}_field"),
         _ => s.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::snake_case;
+
+    #[test]
+    fn snake_case_simple_camel() {
+        assert_eq!(snake_case("TrackId"), "track_id");
+        assert_eq!(snake_case("LatitudeDeg"), "latitude_deg");
+        assert_eq!(snake_case("MessageId"), "message_id");
+    }
+
+    #[test]
+    fn snake_case_acronym_prefix() {
+        assert_eq!(snake_case("SPSBFCommand"), "spsbf_command");
+        assert_eq!(
+            snake_case("SPSBFCommandPUREStart"),
+            "spsbf_command_pure_start"
+        );
+    }
+
+    #[test]
+    fn snake_case_acronym_mid() {
+        assert_eq!(snake_case("XMLParser"), "xml_parser");
+        assert_eq!(snake_case("PUREStart"), "pure_start");
+    }
+
+    #[test]
+    fn snake_case_already_lower() {
+        assert_eq!(snake_case("already"), "already");
+        assert_eq!(snake_case("snake_case"), "snake_case");
+    }
+
+    #[test]
+    fn snake_case_single_char() {
+        assert_eq!(snake_case("A"), "a");
+        assert_eq!(snake_case("a"), "a");
     }
 }

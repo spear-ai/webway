@@ -131,7 +131,7 @@ fn snake_case(s: &str) -> String {
                     out.push('_');
                 }
             }
-            out.push(c.to_lowercase().next().unwrap());
+            out.push(c.to_lowercase().next().unwrap_or(c));
         } else {
             out.push(c);
         }
