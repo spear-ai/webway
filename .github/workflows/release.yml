@@ -46,30 +46,17 @@ jobs:
             crate: spear-gen
             binary: spear-gen
 
-          # header-gen — Linux x86_64.  Bundles libclang.so alongside the binary
-          # (patchelf RPATH=$ORIGIN) so the deployment machine needs no libclang
-          # system package.  Ubuntu does not ship the monolithic libclang.a so
-          # fully-static linking is not achievable via apt packages.
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: header-gen-linux-x86_64
-            musl: false
-            crate: header-gen
-            binary: header-gen
-            llvm: true
+          # header-gen is NOT released as a standalone binary.
+          # It is deployed via the spear-dev container image which bundles
+          # libclang at the OS level — no bundling or RPATH tricks needed.
 
     steps:
       - uses: actions/checkout@v4
 
       # rdkafka requires cmake + curl headers on Linux (both gnu and musl builds).
-      - name: Install build dependencies (Linux, non-LLVM)
-        if: matrix.os == 'ubuntu-latest' && !matrix.llvm
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev musl-tools
-
-      # header-gen: libclang-dev for the shared library + patchelf to set RPATH.
-      - name: Install build dependencies (Linux, LLVM)
-        if: matrix.os == 'ubuntu-latest' && matrix.llvm
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev clang patchelf
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,75 +74,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-${{ matrix.crate }}-cargo-
 
-      - name: Build (spear-gen)
-        if: "!matrix.llvm"
+      - name: Build
         run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
-
-      - name: Build (header-gen)
-        if: matrix.llvm
-        run: |
-          LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
-          LIBCLANG_PATH=$(${LLVM_CONFIG} --libdir)
-          echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
-          LIBCLANG_PATH="${LIBCLANG_PATH}" \
-            cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
-
-      # Bundle libclang.so + libLLVM.so alongside the binary.
-      # libclang-18.so.18 depends on libLLVM.so.18.1, so both must travel together.
-      # patchelf sets RPATH=$ORIGIN on the binary and on libclang so each finds
-      # its dependency in the same directory — no system LLVM install needed.
-      - name: Bundle libclang and patch RPATH (header-gen)
-        if: matrix.llvm
-        run: |
-          LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
-          LIBDIR=$(${LLVM_CONFIG} --libdir)
-          RELDIR="target/${{ matrix.target }}/release"
-          BINARY="${RELDIR}/${{ matrix.binary }}"
-
-          # Find the versioned libclang shared library (e.g. libclang-18.so.18)
-          LIBCLANG_SO=$(ls ${LIBDIR}/libclang-*.so.* 2>/dev/null | head -1)
-          if [ -z "${LIBCLANG_SO}" ]; then
-            LIBCLANG_SO="${LIBDIR}/libclang.so"
-          fi
-          echo "Bundling libclang: ${LIBCLANG_SO}"
-          cp "${LIBCLANG_SO}" "${RELDIR}/"
-
-          # Find the monolithic libLLVM shared library (e.g. libLLVM.so.18.1 or libLLVM-18.so)
-          LIBLLVM_SO=$(ls ${LIBDIR}/libLLVM.so.* 2>/dev/null | head -1)
-          if [ -z "${LIBLLVM_SO}" ]; then
-            LIBLLVM_SO=$(ls ${LIBDIR}/libLLVM-*.so 2>/dev/null | head -1 || true)
-          fi
-          if [ -n "${LIBLLVM_SO}" ]; then
-            echo "Bundling libLLVM: ${LIBLLVM_SO}"
-            cp "${LIBLLVM_SO}" "${RELDIR}/"
-          else
-            echo "WARNING: libLLVM.so not found in ${LIBDIR}"
-          fi
-
-          # Patch RPATH on the binary and on libclang so each finds its deps next to itself.
-          patchelf --set-rpath '$ORIGIN' "${BINARY}"
-          patchelf --set-rpath '$ORIGIN' "${RELDIR}/$(basename "${LIBCLANG_SO}")"
-
-          echo "=== ldd: header-gen ==="
-          ldd "${BINARY}"
-          echo "=== ldd: libclang ==="
-          ldd "${RELDIR}/$(basename "${LIBCLANG_SO}")"
-          if [ -n "${LIBLLVM_SO:-}" ]; then
-            echo "=== ldd: libLLVM ==="
-            ldd "${RELDIR}/$(basename "${LIBLLVM_SO}")"
-          fi
 
       - name: Package
         run: |
           TARBALL="${{ matrix.artifact }}-${{ github.ref_name }}.tar.gz"
           cd target/${{ matrix.target }}/release
-          if [ "${{ matrix.llvm }}" = "true" ]; then
-            # Include the binary + bundled libclang + bundled libLLVM
-            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang-*.so.* libLLVM*.so* 2>/dev/null \
-              || tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang.so
-          else
-            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}
-          fi
+          tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}
           cd ../../..
 
       - name: Upload artifact

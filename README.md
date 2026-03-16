@@ -99,23 +99,17 @@ Takes a directory of `.h` files and emits three files per struct:
 - `--out-proto` — proto3 message definitions
 - `--out-mapping` — explicit `map_*()` functions from each Rust struct to its proto message
 
-**From the release binary** (no system libclang install required):
+**From the spear-dev container** (recommended — no system libclang install required):
 
 ```bash
-# Download from GitHub Releases and extract.
-# The tarball contains three files: the binary, libclang-XX.so.XX, and libLLVM.so.XX.
-# Keep them all in the same directory — the binary finds them via RPATH=$ORIGIN.
-tar -xzf header-gen-linux-x86_64-vX.Y.Z.tar.gz
-cd header-gen-linux-x86_64-vX.Y.Z/   # or wherever it extracted to
-
-./header-gen \
-  --input      headers/ \
+podman exec -it spear-dev header-gen \
+  --input      /workspace/headers \
   --endian     little \
   --word-size  32 \
   --define     LINUX \
-  --out-rust   generated/rust \
-  --out-proto  generated/proto \
-  --out-mapping generated/mapping
+  --out-rust   /workspace/generated/rust \
+  --out-proto  /workspace/generated/proto \
+  --out-mapping /workspace/generated/mapping
 ```
 
 **From source** (requires Rust + libclang):
@@ -137,12 +131,7 @@ cargo run -p header-gen -- \
 
 `--endian` controls the decode method emitted (`from_le_bytes` vs `from_be_bytes`).
 
-**Binary distribution:** the release tarball bundles `libclang.so` and `libLLVM.so` alongside the binary. RPATH is set to `$ORIGIN` on both the binary and `libclang.so` so they find their dependencies in the same directory — no system LLVM installation required. Ubuntu does not ship the monolithic `libclang.a` needed for fully-static linking, so bundling the shared libraries is the most practical approach.
-
-```bash
-./scripts/build-header-gen.sh
-# → target/release/header-gen + libclang-XX.so.XX + libLLVM.so.XX (copy all three to the target machine)
-```
+**Deployment:** `header-gen` is deployed via the `spear-dev` container image, which installs `libclang` at the OS level. There is no standalone release binary — LLVM's transitive shared-library dependencies make portable binary distribution impractical.
 
 ---
 
@@ -190,13 +179,24 @@ The container has the full Rust toolchain, all vendored crate sources, and
 pre-compiled build artifacts. Rebuilds inside the container only recompile
 changed Rust — the heavy C dependencies are already done.
 
-### 3. Generate types from real XSDs (inside container)
+### 3. Generate types from real schemas (inside container)
 
 ```bash
+# From XSD files
 spear-gen \
   --input     /workspace/xsds \
   --out-proto /workspace/types.proto \
   --out-rust  /workspace/types.rs
+
+# From C header files
+header-gen \
+  --input      /workspace/headers \
+  --endian     little \
+  --word-size  32 \
+  --define     LINUX \
+  --out-rust   /workspace/generated/rust \
+  --out-proto  /workspace/generated/proto \
+  --out-mapping /workspace/generated/mapping
 ```
 
 ### 4. Plug in generated types and rebuild
@@ -239,7 +239,8 @@ Releases (tagged `v*`) build and attach to a GitHub Release:
 - `spear-gen-linux-x86_64.tar.gz`
 - `spear-gen-macos-arm64.tar.gz`
 - `spear-gen-macos-x86_64.tar.gz`
-- `header-gen-linux-x86_64.tar.gz` — static LLVM, no runtime libclang dep
+
+`header-gen` is not released as a standalone binary — it is deployed via the `spear-dev` container image.
 
 ---
 
