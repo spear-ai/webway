@@ -100,27 +100,41 @@ jobs:
           LIBCLANG_PATH="${LIBCLANG_PATH}" \
             cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
 
-      # Bundle libclang.so alongside the binary and patch RPATH=$ORIGIN so the
-      # binary finds it in the same directory without any system installation.
+      # Bundle libclang.so + libLLVM.so alongside the binary.
+      # libclang-18.so.18 depends on libLLVM.so.18.1, so both must travel together.
+      # patchelf sets RPATH=$ORIGIN on the binary and on libclang so each finds
+      # its dependency in the same directory — no system LLVM install needed.
       - name: Bundle libclang and patch RPATH (header-gen)
         if: matrix.llvm
         run: |
           LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
           LIBDIR=$(${LLVM_CONFIG} --libdir)
-          BINARY="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          RELDIR="target/${{ matrix.target }}/release"
+          BINARY="${RELDIR}/${{ matrix.binary }}"
 
           # Find the versioned libclang shared library (e.g. libclang-18.so.18)
           LIBCLANG_SO=$(ls ${LIBDIR}/libclang-*.so.* 2>/dev/null | head -1)
           if [ -z "${LIBCLANG_SO}" ]; then
-            # Fall back to unversioned symlink
             LIBCLANG_SO="${LIBDIR}/libclang.so"
           fi
-          echo "Bundling: ${LIBCLANG_SO}"
-          cp "${LIBCLANG_SO}" "target/${{ matrix.target }}/release/"
+          echo "Bundling libclang: ${LIBCLANG_SO}"
+          cp "${LIBCLANG_SO}" "${RELDIR}/"
 
-          # Patch the binary so it looks for libclang in its own directory first.
-          SONAME=$(basename "${LIBCLANG_SO}")
+          # Find the monolithic libLLVM shared library (e.g. libLLVM.so.18.1 or libLLVM-18.so)
+          LIBLLVM_SO=$(ls ${LIBDIR}/libLLVM.so.* 2>/dev/null | head -1)
+          if [ -z "${LIBLLVM_SO}" ]; then
+            LIBLLVM_SO=$(ls ${LIBDIR}/libLLVM-*.so 2>/dev/null | head -1 || true)
+          fi
+          if [ -n "${LIBLLVM_SO}" ]; then
+            echo "Bundling libLLVM: ${LIBLLVM_SO}"
+            cp "${LIBLLVM_SO}" "${RELDIR}/"
+          else
+            echo "WARNING: libLLVM.so not found in ${LIBDIR}"
+          fi
+
+          # Patch RPATH on the binary and on libclang so each finds its deps next to itself.
           patchelf --set-rpath '$ORIGIN' "${BINARY}"
+          patchelf --set-rpath '$ORIGIN' "${RELDIR}/$(basename "${LIBCLANG_SO}")"
 
           echo "ldd after patching:"
           ldd "${BINARY}"
@@ -130,8 +144,8 @@ jobs:
           TARBALL="${{ matrix.artifact }}-${{ github.ref_name }}.tar.gz"
           cd target/${{ matrix.target }}/release
           if [ "${{ matrix.llvm }}" = "true" ]; then
-            # Include the binary + bundled libclang
-            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang-*.so.* 2>/dev/null \
+            # Include the binary + bundled libclang + bundled libLLVM
+            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang-*.so.* libLLVM*.so* 2>/dev/null \
               || tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang.so
           else
             tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}

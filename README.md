@@ -102,10 +102,12 @@ Takes a directory of `.h` files and emits three files per struct:
 **From the release binary** (no system libclang install required):
 
 ```bash
-# Download from GitHub Releases and extract — tarball includes libclang.so
+# Download from GitHub Releases and extract.
+# The tarball contains three files: the binary, libclang-XX.so.XX, and libLLVM.so.XX.
+# Keep them all in the same directory — the binary finds them via RPATH=$ORIGIN.
 tar -xzf header-gen-linux-x86_64-vX.Y.Z.tar.gz
+cd header-gen-linux-x86_64-vX.Y.Z/   # or wherever it extracted to
 
-# Run — libclang.so is bundled alongside the binary (RPATH=$ORIGIN)
 ./header-gen \
   --input      headers/ \
   --endian     little \
@@ -135,11 +137,11 @@ cargo run -p header-gen -- \
 
 `--endian` controls the decode method emitted (`from_le_bytes` vs `from_be_bytes`).
 
-**Binary distribution:** the release tarball bundles `libclang.so` alongside the binary. The binary's RPATH is set to `$ORIGIN` so it finds the library in the same directory without any system package installation. Ubuntu does not ship the monolithic `libclang.a` needed for fully-static linking, so bundling the shared library is the most practical approach.
+**Binary distribution:** the release tarball bundles `libclang.so` and `libLLVM.so` alongside the binary. RPATH is set to `$ORIGIN` on both the binary and `libclang.so` so they find their dependencies in the same directory — no system LLVM installation required. Ubuntu does not ship the monolithic `libclang.a` needed for fully-static linking, so bundling the shared libraries is the most practical approach.
 
 ```bash
 ./scripts/build-header-gen.sh
-# → target/release/header-gen + libclang.so (copy both to the target machine)
+# → target/release/header-gen + libclang-XX.so.XX + libLLVM.so.XX (copy all three to the target machine)
 ```
 
 ---
