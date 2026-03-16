@@ -19,7 +19,7 @@
 #   # uncomment include!("types.rs") in main.rs, add decode call
 #   cargo build --offline --release -p spear-gateway
 
-FROM --platform=linux/amd64 rust:1.84-slim-bookworm
+FROM --platform=linux/amd64 rust:1.85-slim-bookworm
 
 # System build dependencies.
 # cmake + libcurl are required to compile rdkafka-sys.
