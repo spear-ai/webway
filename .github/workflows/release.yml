@@ -136,8 +136,14 @@ jobs:
           patchelf --set-rpath '$ORIGIN' "${BINARY}"
           patchelf --set-rpath '$ORIGIN' "${RELDIR}/$(basename "${LIBCLANG_SO}")"
 
-          echo "ldd after patching:"
+          echo "=== ldd: header-gen ==="
           ldd "${BINARY}"
+          echo "=== ldd: libclang ==="
+          ldd "${RELDIR}/$(basename "${LIBCLANG_SO}")"
+          if [ -n "${LIBLLVM_SO:-}" ]; then
+            echo "=== ldd: libLLVM ==="
+            ldd "${RELDIR}/$(basename "${LIBLLVM_SO}")"
+          fi
 
       - name: Package
         run: |
