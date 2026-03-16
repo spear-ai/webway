@@ -27,10 +27,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # rdkafka (spear-lib) requires cmake + curl headers on Linux.
-      # header-gen requires llvm-dev + libclang-dev for the clang crate.
+      # header-gen is excluded from this job and tested separately in test-header-gen.
       - name: Install build dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev llvm-dev libclang-dev clang
+        run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -49,10 +49,10 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --workspace --exclude header-gen
 
       - name: Test
-        run: cargo test --release --target ${{ matrix.target }}
+        run: cargo test --release --target ${{ matrix.target }} --workspace --exclude header-gen
 
   # Verify the musl target compiles on every push so issues don't
   # surface for the first time during a release build.
@@ -89,11 +89,11 @@ jobs:
       - name: Check (musl)
         run: cargo check --target x86_64-unknown-linux-musl -p spear-gen
 
-  # Verify header-gen compiles with LLVM/libclang available.
-  # Does NOT require musl — header-gen is self-contained via static LLVM linking,
-  # not via musl libc.
-  check-header-gen:
-    name: Check header-gen (Linux x86_64)
+  # Build and test header-gen on Linux where libclang is available.
+  # header-gen is excluded from the matrix `test` job above because macOS
+  # runners don't ship with libclang; it gets full test coverage here instead.
+  test-header-gen:
+    name: Test header-gen (Linux x86_64)
     runs-on: ubuntu-latest
 
     steps:
@@ -116,8 +116,8 @@ jobs:
           restore-keys: |
             header-gen-cargo-
 
-      - name: Check header-gen
-        run: cargo check -p header-gen
+      - name: Test header-gen
+        run: cargo test -p header-gen
 
   lint:
     name: Lint
