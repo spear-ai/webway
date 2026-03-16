@@ -92,7 +92,15 @@ jobs:
 
       - name: Build (header-gen, static LLVM)
         if: matrix.llvm
-        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }} --features static-clang
+        run: |
+          # Ubuntu ships llvm-config-XX (versioned) but not the unversioned
+          # llvm-config symlink. clang-sys needs LLVM_CONFIG_PATH to find it.
+          LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+          echo "Using LLVM config: ${LLVM_CONFIG}"
+          echo "  libdir: $(${LLVM_CONFIG} --libdir)"
+          ls "$(${LLVM_CONFIG} --libdir)"/libclang*.a || true
+          LLVM_CONFIG_PATH="${LLVM_CONFIG}" \
+            cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }} --features static-clang
 
       - name: Verify header-gen has no libclang runtime dependency
         if: matrix.llvm && matrix.os == 'ubuntu-latest'
