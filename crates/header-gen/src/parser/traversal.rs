@@ -154,9 +154,17 @@ fn visit_struct(cursor: &clang::Entity, name: &str, report: &mut ReviewReport) -
             None => CTypeRef::Unresolved("<no type>".to_owned()),
         };
 
+        // get_offset_of_field() returns the offset in bits (usize); divide by 8 for bytes.
+        // Falls back to 0 on error (a 0-offset field is always correct for the first field).
+        let byte_offset = child
+            .get_offset_of_field()
+            .map(|bits| (bits / 8) as u64)
+            .unwrap_or(0);
+
         fields.push(CField {
             name: field_name,
             ty: field_ty,
+            byte_offset,
             bitfield_width,
         });
 

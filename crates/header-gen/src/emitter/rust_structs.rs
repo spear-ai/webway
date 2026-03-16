@@ -92,7 +92,7 @@ fn emit_decode(out: &mut String, s: &CStruct, config: TargetConfig) {
 
     for field in &active_fields {
         let fname = field_name(&field.name);
-        emit_field_decode(out, &fname, &field.ty, config, suffix);
+        emit_field_decode(out, &fname, &field.ty, field.byte_offset, config, suffix);
     }
 
     writeln!(out, "        Ok(Self {{").unwrap();
@@ -108,15 +108,19 @@ fn emit_field_decode(
     out: &mut String,
     fname: &str,
     ty: &CTypeRef,
+    byte_offset: u64,
     config: TargetConfig,
     suffix: &str,
 ) {
+    // Jump to the libclang-reported byte offset before reading each field.
+    // This correctly accounts for any compiler-inserted alignment padding.
+    writeln!(out, "        _ofs = {byte_offset};").unwrap();
+
     match ty {
         CTypeRef::Primitive(p) => {
             let m = map_primitive(*p, config);
             let expr = decode_expr(m.rust_type, m.byte_size, suffix);
             writeln!(out, "        let {fname} = {expr};").unwrap();
-            writeln!(out, "        _ofs += {};", m.byte_size).unwrap();
         }
         CTypeRef::Array(elem, count) => {
             emit_array_decode(out, fname, elem, *count, config, suffix);
@@ -127,7 +131,6 @@ fn emit_field_decode(
                 "        let {fname} = {sname}::decode(&bytes[_ofs..])?;"
             )
             .unwrap();
-            writeln!(out, "        _ofs += {sname}::byte_size();").unwrap();
         }
         CTypeRef::Union { byte_size } => {
             writeln!(
@@ -135,7 +138,6 @@ fn emit_field_decode(
                 "        let {fname}: [u8; {byte_size}] = bytes[_ofs.._ofs + {byte_size}].try_into()?;"
             )
             .unwrap();
-            writeln!(out, "        _ofs += {byte_size};").unwrap();
         }
         CTypeRef::Unresolved(name) => {
             writeln!(
@@ -164,7 +166,6 @@ fn emit_array_decode(
                 "        let {fname}: [u8; {count}] = bytes[_ofs.._ofs + {count}].try_into()?;"
             )
             .unwrap();
-            writeln!(out, "        _ofs += {count};").unwrap();
         }
         CTypeRef::Primitive(p) => {
             let m = map_primitive(*p, config);
@@ -192,7 +193,6 @@ fn emit_array_decode(
                 "        let {fname}: [u8; {total}] = bytes[_ofs.._ofs + {total}].try_into()?;"
             )
             .unwrap();
-            writeln!(out, "        _ofs += {total};").unwrap();
         }
     }
 }

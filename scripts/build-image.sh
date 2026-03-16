@@ -7,14 +7,17 @@
 # Usage:
 #   ./scripts/build-image.sh [image-tag]
 #
-# Default tag: spear-dev:latest
+# Default tag: spear-dev:<version from crates/spear-gen/Cargo.toml>
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-TAG="${1:-spear-dev:latest}"
-ARCHIVE="spear-dev.tar.gz"
+VERSION=$(grep '^version' crates/spear-gen/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+TAG="${1:-spear-dev:${VERSION}}"
+# Derive archive name from the tag: replace ':' with '-' so the filename carries
+# the version. e.g. spear-dev:1.2.3 → spear-dev-1.2.3.tar.gz
+ARCHIVE="${TAG//:/-}.tar.gz"
 
 echo "==> Vendoring crate dependencies..."
 cargo vendor vendor/

@@ -145,6 +145,43 @@ fn union_field_is_raw_bytes_in_rust() {
     );
 }
 
+// ─── Offset correctness ───────────────────────────────────────────────────────
+
+#[test]
+fn padded_struct_uses_libclang_offsets() {
+    // AlignedRecord (packed.h): char tag (offset 0), int value (offset 4), short flags (offset 8).
+    // Without libclang offsets the emitter would wrongly place `value` at offset 1.
+    let reg = parse_all(le32());
+    let out = emitter::rust_structs::emit(&reg, le32());
+
+    // Extract just the AlignedRecord impl block.
+    let start = out
+        .find("impl AlignedRecord")
+        .expect("AlignedRecord not found in output");
+    let after_start = &out[start..];
+    // The block ends at the closing `}` before the next top-level item.
+    let end = after_start
+        .find("\n}\n")
+        .map(|i| i + 3)
+        .unwrap_or(after_start.len());
+    let block = &after_start[..end];
+
+    // `tag` is at byte 0.
+    assert!(
+        block.contains("_ofs = 0;"),
+        "expected `_ofs = 0` for char tag:\n{block}"
+    );
+    // `value` (int) must be at byte 4, not byte 1.
+    assert!(
+        block.contains("_ofs = 4;"),
+        "expected `_ofs = 4` for int value (padding after char):\n{block}"
+    );
+    assert!(
+        !block.contains("_ofs = 1;"),
+        "found incorrect `_ofs = 1` — padding not accounted for:\n{block}"
+    );
+}
+
 // ─── Proto emitter ────────────────────────────────────────────────────────────
 
 #[test]

@@ -1,0 +1,5 @@
+[env]
+# Allow header-gen tests to find libclang on macOS (CommandLineTools install).
+# On Linux (CI / spear-dev container) LIBCLANG_PATH is set by the test job instead.
+LIBCLANG_PATH = { value = "/Library/Developer/CommandLineTools/usr/lib", force = false }
+DYLD_LIBRARY_PATH = { value = "/Library/Developer/CommandLineTools/usr/lib", force = false }

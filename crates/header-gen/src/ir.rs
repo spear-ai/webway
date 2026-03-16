@@ -19,6 +19,9 @@ pub struct CStruct {
 pub struct CField {
     pub name: String,
     pub ty: CTypeRef,
+    /// Byte offset of this field within the struct, as reported by libclang.
+    /// Accounts for all compiler-inserted alignment padding.
+    pub byte_offset: u64,
     /// `Some(width)` when this is a bitfield.
     pub bitfield_width: Option<u32>,
 }
