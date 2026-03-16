@@ -110,15 +110,16 @@ jobs:
 
       - name: Package
         run: |
+          TARBALL="${{ matrix.artifact }}-${{ github.ref_name }}.tar.gz"
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../${{ matrix.artifact }}.tar.gz ${{ matrix.binary }}
+          tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}
           cd ../../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: ${{ matrix.artifact }}-${{ github.ref_name }}
+          path: ${{ matrix.artifact }}-${{ github.ref_name }}.tar.gz
           if-no-files-found: error
 
   release:
