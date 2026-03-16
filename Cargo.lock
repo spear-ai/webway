@@ -273,6 +273,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clang",
+ "clang-sys",
  "clap",
  "tempfile",
 ]

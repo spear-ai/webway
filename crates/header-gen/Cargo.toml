@@ -13,5 +13,13 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 clang = { workspace = true }
 
+# On Linux, force libclang to be statically linked so the release binary has
+# no libclang.so runtime dependency. Cargo feature-unifies this with the
+# implicit clang-sys dep pulled in by the `clang` crate.
+# macOS is excluded: Homebrew LLVM is dynamic-only and header-gen is not
+# shipped as a macOS release binary.
+[target.'cfg(target_os = "linux")'.dependencies]
+clang-sys = { version = "1", features = ["static"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }

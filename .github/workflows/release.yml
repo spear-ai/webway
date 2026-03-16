@@ -96,6 +96,18 @@ jobs:
           LLVM_LINK_STATIC: "1"
         run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
 
+      - name: Verify header-gen has no libclang runtime dependency
+        if: matrix.llvm && matrix.os == 'ubuntu-latest'
+        run: |
+          BINARY="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          echo "ldd output:"
+          ldd "${BINARY}"
+          if ldd "${BINARY}" | grep -q libclang; then
+            echo "ERROR: binary is dynamically linked against libclang — static linking failed"
+            exit 1
+          fi
+          echo "OK: no libclang runtime dependency"
+
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
