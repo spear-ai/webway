@@ -99,6 +99,25 @@ Takes a directory of `.h` files and emits three files per struct:
 - `--out-proto` — proto3 message definitions
 - `--out-mapping` — explicit `map_*()` functions from each Rust struct to its proto message
 
+**From the release binary** (no Rust toolchain required on the target machine):
+
+```bash
+# Download from GitHub Releases and extract
+tar -xzf header-gen-linux-x86_64.tar.gz
+
+# Run — no libclang or clang needed at runtime
+./header-gen \
+  --input      headers/ \
+  --endian     little \
+  --word-size  32 \
+  --define     LINUX \
+  --out-rust   generated/rust \
+  --out-proto  generated/proto \
+  --out-mapping generated/mapping
+```
+
+**From source** (requires Rust + libclang):
+
 ```bash
 cargo run -p header-gen -- \
   --input      headers/ \
