@@ -99,13 +99,13 @@ Takes a directory of `.h` files and emits three files per struct:
 - `--out-proto` — proto3 message definitions
 - `--out-mapping` — explicit `map_*()` functions from each Rust struct to its proto message
 
-**From the release binary** (no Rust toolchain required on the target machine):
+**From the release binary** (no system libclang install required):
 
 ```bash
-# Download from GitHub Releases and extract
-tar -xzf header-gen-linux-x86_64.tar.gz
+# Download from GitHub Releases and extract — tarball includes libclang.so
+tar -xzf header-gen-linux-x86_64-vX.Y.Z.tar.gz
 
-# Run — no libclang or clang needed at runtime
+# Run — libclang.so is bundled alongside the binary (RPATH=$ORIGIN)
 ./header-gen \
   --input      headers/ \
   --endian     little \
@@ -135,11 +135,11 @@ cargo run -p header-gen -- \
 
 `--endian` controls the decode method emitted (`from_le_bytes` vs `from_be_bytes`).
 
-**Binary distribution:** `header-gen` statically links LLVM/libclang into the binary (`LLVM_LINK_STATIC=1`) so the target machine needs no `clang` or `libclang` installed at runtime.
+**Binary distribution:** the release tarball bundles `libclang.so` alongside the binary. The binary's RPATH is set to `$ORIGIN` so it finds the library in the same directory without any system package installation. Ubuntu does not ship the monolithic `libclang.a` needed for fully-static linking, so bundling the shared library is the most practical approach.
 
 ```bash
 ./scripts/build-header-gen.sh
-# → target/release/header-gen (~80-100 MB, no runtime deps)
+# → target/release/header-gen + libclang.so (copy both to the target machine)
 ```
 
 ---

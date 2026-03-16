@@ -8,17 +8,10 @@ description = "C header → Rust struct + proto3 + mapping function generator"
 name = "header-gen"
 path = "src/main.rs"
 
-# Enable with --features static-clang to bake libclang into the binary.
-# Used by the release CI so the deployment machine needs no libclang at runtime.
-# Default (no feature): links libclang dynamically — fine for dev and CI tests.
-[features]
-static-clang = ["clang-sys/static"]
-
 [dependencies]
 clap = { workspace = true }
 anyhow = { workspace = true }
 clang = { workspace = true }
-# Direct dep so the static-clang feature can toggle clang-sys/static.
 clang-sys = { version = "1" }
 
 [dev-dependencies]

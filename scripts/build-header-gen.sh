@@ -1,35 +1,58 @@
 #!/usr/bin/env bash
-# Build header-gen as a self-contained Linux x86_64 binary.
+# Build header-gen and bundle libclang.so alongside it.
 #
-# Self-contained means: libclang is statically linked into the binary.
-# No Docker, no clang, no libclang required on the deployment machine.
+# The binary's RPATH is patched to $ORIGIN so it finds libclang.so in the
+# same directory as itself — no system libclang installation needed on the
+# deployment machine.
 #
-# Prerequisites (one-time, on the BUILD machine):
+# Note: Ubuntu does not ship the monolithic libclang.a required for fully-static
+# linking. Bundling the shared library is the practical alternative.
+#
+# Prerequisites (one-time):
 #   Linux:
-#     sudo apt-get install -y llvm-dev libclang-dev clang
+#     sudo apt-get install -y libclang-dev clang patchelf
 #   macOS (Homebrew):
 #     brew install llvm
-#     export LLVM_SYS_160_PREFIX="$(brew --prefix llvm)"  # adjust version number
+#     export LIBCLANG_PATH="$(brew --prefix llvm)/lib"
 #
 # Usage:
 #   ./scripts/build-header-gen.sh
 #
 # Output:
-#   target/release/header-gen   (~80-100 MB, no runtime deps)
+#   target/release/header-gen        (binary, RPATH=$ORIGIN)
+#   target/release/libclang-*.so.*   (bundled libclang)
 
 set -euo pipefail
 
 BINARY="target/release/header-gen"
 
-echo "Building header-gen (statically linked LLVM)..."
-LLVM_LINK_STATIC=1 cargo build --release -p header-gen
+# Locate the versioned llvm-config (Ubuntu ships llvm-config-18, not llvm-config).
+LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1 || true)
+if [ -z "${LLVM_CONFIG}" ] && command -v llvm-config &>/dev/null; then
+    LLVM_CONFIG=llvm-config
+fi
+if [ -z "${LLVM_CONFIG}" ]; then
+    echo "ERROR: llvm-config not found. Install llvm-dev (Linux) or brew install llvm (macOS)."
+    exit 1
+fi
+
+LIBDIR=$(${LLVM_CONFIG} --libdir)
+echo "LLVM libdir: ${LIBDIR}"
+
+LIBCLANG_PATH="${LIBDIR}" cargo build --release -p header-gen
+
+# Bundle libclang.so and patch RPATH.
+LIBCLANG_SO=$(ls "${LIBDIR}"/libclang-*.so.* 2>/dev/null | head -1 || echo "")
+if [ -z "${LIBCLANG_SO}" ]; then
+    LIBCLANG_SO="${LIBDIR}/libclang.so"
+fi
+echo "Bundling: ${LIBCLANG_SO}"
+cp "${LIBCLANG_SO}" "target/release/"
+patchelf --set-rpath '$ORIGIN' "${BINARY}"
 
 echo ""
-echo "Binary: ${BINARY}"
-echo "Size:   $(du -sh "${BINARY}" | cut -f1)"
+echo "Binary:  ${BINARY}"
+echo "Library: target/release/$(basename "${LIBCLANG_SO}")"
 echo ""
-echo "Verify no libclang runtime dependency (Linux):"
-echo "  ldd ${BINARY}   # libclang should NOT appear"
-echo ""
-echo "Transfer to target machine:"
-echo "  scp ${BINARY} <host>:/path/to/header-gen"
+echo "Transfer both files to the target machine (same directory):"
+echo "  scp ${BINARY} target/release/$(basename "${LIBCLANG_SO}") <host>:/path/to/"

@@ -46,9 +46,10 @@ jobs:
             crate: spear-gen
             binary: spear-gen
 
-          # header-gen — Linux x86_64 glibc (self-contained via static LLVM,
-          # not musl).  libclang-dev provides the static libs at build time;
-          # the resulting binary has no libclang runtime dependency.
+          # header-gen — Linux x86_64.  Bundles libclang.so alongside the binary
+          # (patchelf RPATH=$ORIGIN) so the deployment machine needs no libclang
+          # system package.  Ubuntu does not ship the monolithic libclang.a so
+          # fully-static linking is not achievable via apt packages.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: header-gen-linux-x86_64
@@ -65,10 +66,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && !matrix.llvm
         run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev musl-tools
 
-      # header-gen requires LLVM dev packages for static libclang linking.
+      # header-gen: libclang-dev for the shared library + patchelf to set RPATH.
       - name: Install build dependencies (Linux, LLVM)
         if: matrix.os == 'ubuntu-latest' && matrix.llvm
-        run: sudo apt-get update && sudo apt-get install -y llvm-dev libclang-dev clang
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev clang patchelf
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -90,35 +91,51 @@ jobs:
         if: "!matrix.llvm"
         run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
 
-      - name: Build (header-gen, static LLVM)
+      - name: Build (header-gen)
         if: matrix.llvm
         run: |
-          # Ubuntu ships llvm-config-XX (versioned) but not the unversioned
-          # llvm-config symlink. clang-sys needs LLVM_CONFIG_PATH to find it.
           LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
-          echo "Using LLVM config: ${LLVM_CONFIG}"
-          echo "  libdir: $(${LLVM_CONFIG} --libdir)"
-          ls "$(${LLVM_CONFIG} --libdir)"/libclang*.a || true
-          LLVM_CONFIG_PATH="${LLVM_CONFIG}" \
-            cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }} --features static-clang
+          LIBCLANG_PATH=$(${LLVM_CONFIG} --libdir)
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
+          LIBCLANG_PATH="${LIBCLANG_PATH}" \
+            cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
 
-      - name: Verify header-gen has no libclang runtime dependency
-        if: matrix.llvm && matrix.os == 'ubuntu-latest'
+      # Bundle libclang.so alongside the binary and patch RPATH=$ORIGIN so the
+      # binary finds it in the same directory without any system installation.
+      - name: Bundle libclang and patch RPATH (header-gen)
+        if: matrix.llvm
         run: |
+          LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+          LIBDIR=$(${LLVM_CONFIG} --libdir)
           BINARY="target/${{ matrix.target }}/release/${{ matrix.binary }}"
-          echo "ldd output:"
-          ldd "${BINARY}"
-          if ldd "${BINARY}" | grep -q libclang; then
-            echo "ERROR: binary is dynamically linked against libclang — static linking failed"
-            exit 1
+
+          # Find the versioned libclang shared library (e.g. libclang-18.so.18)
+          LIBCLANG_SO=$(ls ${LIBDIR}/libclang-*.so.* 2>/dev/null | head -1)
+          if [ -z "${LIBCLANG_SO}" ]; then
+            # Fall back to unversioned symlink
+            LIBCLANG_SO="${LIBDIR}/libclang.so"
           fi
-          echo "OK: no libclang runtime dependency"
+          echo "Bundling: ${LIBCLANG_SO}"
+          cp "${LIBCLANG_SO}" "target/${{ matrix.target }}/release/"
+
+          # Patch the binary so it looks for libclang in its own directory first.
+          SONAME=$(basename "${LIBCLANG_SO}")
+          patchelf --set-rpath '$ORIGIN' "${BINARY}"
+
+          echo "ldd after patching:"
+          ldd "${BINARY}"
 
       - name: Package
         run: |
           TARBALL="${{ matrix.artifact }}-${{ github.ref_name }}.tar.gz"
           cd target/${{ matrix.target }}/release
-          tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}
+          if [ "${{ matrix.llvm }}" = "true" ]; then
+            # Include the binary + bundled libclang
+            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang-*.so.* 2>/dev/null \
+              || tar -czvf "../../../${TARBALL}" ${{ matrix.binary }} libclang.so
+          else
+            tar -czvf "../../../${TARBALL}" ${{ matrix.binary }}
+          fi
           cd ../../..
 
       - name: Upload artifact
