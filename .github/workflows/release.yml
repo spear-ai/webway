@@ -16,37 +16,59 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Deployment target — airgapped Linux environments.
-          # cmake + libcurl4-openssl-dev are already installed for all Linux
-          # jobs below. No changes needed when spear-gateway is added.
+          # spear-gen — Deployment target: airgapped Linux (musl static binary).
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: spear-gen-linux-x86_64-musl
             musl: true
+            crate: spear-gen
+            binary: spear-gen
 
-          # Developer convenience targets.
+          # spear-gen — Developer convenience targets.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: spear-gen-linux-x86_64
             musl: false
+            crate: spear-gen
+            binary: spear-gen
 
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: spear-gen-macos-arm64
             musl: false
+            crate: spear-gen
+            binary: spear-gen
 
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: spear-gen-macos-x86_64
             musl: false
+            crate: spear-gen
+            binary: spear-gen
+
+          # header-gen — Linux x86_64 glibc (self-contained via static LLVM,
+          # not musl).  libclang-dev provides the static libs at build time;
+          # the resulting binary has no libclang runtime dependency.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: header-gen-linux-x86_64
+            musl: false
+            crate: header-gen
+            binary: header-gen
+            llvm: true
 
     steps:
       - uses: actions/checkout@v4
 
       # rdkafka requires cmake + curl headers on Linux (both gnu and musl builds).
-      - name: Install build dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install build dependencies (Linux, non-LLVM)
+        if: matrix.os == 'ubuntu-latest' && !matrix.llvm
         run: sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev musl-tools
+
+      # header-gen requires LLVM dev packages for static libclang linking.
+      - name: Install build dependencies (Linux, LLVM)
+        if: matrix.os == 'ubuntu-latest' && matrix.llvm
+        run: sudo apt-get update && sudo apt-get install -y llvm-dev libclang-dev clang
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -60,17 +82,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ matrix.crate }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-cargo-
+            ${{ runner.os }}-${{ matrix.target }}-${{ matrix.crate }}-cargo-
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p spear-gen
+      - name: Build (spear-gen)
+        if: "!matrix.llvm"
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
+
+      - name: Build (header-gen, static LLVM)
+        if: matrix.llvm
+        env:
+          LLVM_LINK_STATIC: "1"
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
 
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../${{ matrix.artifact }}.tar.gz spear-gen
+          tar -czvf ../../../${{ matrix.artifact }}.tar.gz ${{ matrix.binary }}
           cd ../../..
 
       - name: Upload artifact

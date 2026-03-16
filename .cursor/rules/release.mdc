@@ -26,9 +26,12 @@ builds four binaries and attaches them to a GitHub release automatically.
    match, and `spear-gen --version` will be wrong if you skip this step.
    ```toml
    # crates/spear-gen/Cargo.toml
-   version = "0.2.11"  # ← set to the new version
+   version = "0.2.12"  # ← set to the new version
    ```
    Commit this change to `main` before tagging.
+
+   `header-gen` is versioned independently (`0.x.y`); its version does not need
+   to match the release tag.
 
 4. Choose a version number following semver:
    - Bump **patch** (`v0.1.1`) for bug fixes
@@ -45,11 +48,12 @@ builds four binaries and attaches them to a GitHub release automatically.
 6. Watch the release workflow at:
    `https://github.com/Codykilpatrick/webway/actions`
 
-   It will build and attach four binaries to the release:
-   - `spear-gen-linux-x86_64-musl.tar.gz` — **airgapped deployment binary**
+   It will build and attach five binaries to the release:
+   - `spear-gen-linux-x86_64-musl.tar.gz` — **airgapped deployment binary (musl static)**
    - `spear-gen-linux-x86_64.tar.gz`
    - `spear-gen-macos-arm64.tar.gz`
    - `spear-gen-macos-x86_64.tar.gz`
+   - `header-gen-linux-x86_64.tar.gz` — **C header → Rust/proto generator (static LLVM)**
 
 7. The release is created automatically at:
    `https://github.com/Codykilpatrick/webway/releases`
