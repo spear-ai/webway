@@ -92,9 +92,7 @@ jobs:
 
       - name: Build (header-gen, static LLVM)
         if: matrix.llvm
-        env:
-          LLVM_LINK_STATIC: "1"
-        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }} --features static-clang
 
       - name: Verify header-gen has no libclang runtime dependency
         if: matrix.llvm && matrix.os == 'ubuntu-latest'
