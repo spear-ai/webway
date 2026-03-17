@@ -29,7 +29,7 @@ fn be64() -> TargetConfig {
 
 #[test]
 fn all_three_outputs_generated_for_simple_h() {
-    let (reg, report) = parser::parse(&fixtures_dir(), &[], le32()).expect("parse failed");
+    let (reg, report) = parser::parse(&fixtures_dir(), &[], &[], le32()).expect("parse failed");
     assert!(!reg.is_empty(), "expected at least one struct");
 
     let rust_out = emitter::rust_structs::emit(&reg, le32());
@@ -73,7 +73,7 @@ fn review_report_empty_for_simple_scalars_only() {
     let src = fixtures_dir().join("simple.h");
     std::fs::copy(&src, tmp.path().join("simple.h")).unwrap();
 
-    let (_, report) = parser::parse(tmp.path(), &[], le32()).expect("parse failed");
+    let (_, report) = parser::parse(tmp.path(), &[], &[], le32()).expect("parse failed");
     assert!(
         report.is_empty(),
         "expected empty review report for simple.h, got:\n{}",
@@ -92,7 +92,7 @@ fn review_report_has_items_for_bitfield_headers() {
     )
     .unwrap();
 
-    let (_, report) = parser::parse(tmp.path(), &[], le32()).expect("parse failed");
+    let (_, report) = parser::parse(tmp.path(), &[], &[], le32()).expect("parse failed");
     assert!(
         !report.bitfields.is_empty(),
         "expected bitfield items in review report"
@@ -109,7 +109,7 @@ fn review_report_has_union_items() {
     let tmp = tempfile::tempdir().expect("tempdir");
     std::fs::copy(fixtures_dir().join("unions.h"), tmp.path().join("unions.h")).unwrap();
 
-    let (_, report) = parser::parse(tmp.path(), &[], le32()).expect("parse failed");
+    let (_, report) = parser::parse(tmp.path(), &[], &[], le32()).expect("parse failed");
     assert!(
         !report.unions.is_empty(),
         "expected union items in review report"
@@ -120,7 +120,7 @@ fn review_report_has_union_items() {
 
 #[test]
 fn big_endian_64_outputs_correct_markers() {
-    let (reg, _) = parser::parse(&fixtures_dir(), &[], be64()).expect("parse failed");
+    let (reg, _) = parser::parse(&fixtures_dir(), &[], &[], be64()).expect("parse failed");
     let rust_out = emitter::rust_structs::emit(&reg, be64());
     let proto_out = emitter::proto::emit(&reg, be64());
 
@@ -149,7 +149,7 @@ fn typedef_aliases_produce_no_unresolved_types() {
     )
     .unwrap();
 
-    let (_, report) = parser::parse(tmp.path(), &[], le32()).expect("parse failed");
+    let (_, report) = parser::parse(tmp.path(), &[], &[], le32()).expect("parse failed");
     assert!(
         report.unresolved.is_empty(),
         "unexpected unresolved types: {:?}",

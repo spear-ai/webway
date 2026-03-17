@@ -24,6 +24,11 @@ struct Cli {
     #[arg(long = "word-size", default_value = "32")]
     word_size: WordSizeArg,
 
+    /// Extra include search paths (repeatable, e.g. `--include /usr/include`).
+    /// Use this to point at system headers or a cross-compilation sysroot.
+    #[arg(long = "include", value_name = "PATH")]
+    includes: Vec<PathBuf>,
+
     /// Pre-processor defines (repeatable, e.g. `--define LINUX --define UNIX`).
     #[arg(long = "define", value_name = "NAME")]
     defines: Vec<String>,
@@ -102,7 +107,13 @@ fn main() -> Result<()> {
     );
 
     // 1. Parse
-    let (registry, report) = parser::parse(&cli.input, &cli.defines, config)
+    let extra_includes: Vec<String> = cli
+        .includes
+        .iter()
+        .map(|p| format!("-I{}", p.display()))
+        .collect();
+
+    let (registry, report) = parser::parse(&cli.input, &extra_includes, &cli.defines, config)
         .with_context(|| format!("Failed to parse headers in `{}`", cli.input.display()))?;
 
     eprintln!("  {} struct(s) discovered", registry.len());
