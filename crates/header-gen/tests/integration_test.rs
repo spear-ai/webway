@@ -178,6 +178,42 @@ fn structs_from_include_dirs_are_not_emitted() {
     );
 }
 
+// ─── Typedef struct patterns ──────────────────────────────────────────────────
+
+/// The two most common C struct patterns both set key == typedef_name in the
+/// TypedefDecl handler.  A prior bug inserted typedef_name into `seen` before
+/// checking `!seen.contains(&key)`, causing BOTH patterns to silently emit 0
+/// structs even though the file passed the input-dir filter.
+#[test]
+fn typedef_struct_same_name_is_registered() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join("common.h"),
+        // Pattern 1: typedef struct Foo { ... } Foo;   (named, matching)
+        "typedef struct Packet { int id; int len; } Packet;\n\
+         // Pattern 2: typedef struct { ... } Bar;      (anonymous)
+         typedef struct { int x; int y; } Point;\n",
+    )
+    .unwrap();
+
+    let (reg, report) = parser::parse(tmp.path(), &[], &[], le32(), false).expect("parse failed");
+    assert!(
+        report.parse_failures.is_empty(),
+        "parse failures: {:?}",
+        report.parse_failures
+    );
+    assert!(
+        reg.contains_key("Packet"),
+        "Packet (named typedef struct) missing; keys: {:?}",
+        reg.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        reg.contains_key("Point"),
+        "Point (anonymous typedef struct) missing; keys: {:?}",
+        reg.keys().collect::<Vec<_>>()
+    );
+}
+
 // ─── Typedef resolution ───────────────────────────────────────────────────────
 
 #[test]

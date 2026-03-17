@@ -109,8 +109,22 @@ pub fn parse_headers(
                 // Handle `typedef struct Foo { ... } Foo;`
                 if let Some(ty) = cursor.get_typedef_underlying_type() {
                     let canon = ty.get_canonical_type();
+                    if verbose {
+                        eprintln!(
+                            "[typedef] `{}` canonical_kind={:?}",
+                            cursor.get_name().unwrap_or_default(),
+                            canon.get_kind(),
+                        );
+                    }
                     if canon.get_kind() == TypeKind::Record {
                         if let Some(decl) = canon.get_declaration() {
+                            if verbose {
+                                eprintln!(
+                                    "[typedef] `{}` decl_kind={:?}",
+                                    cursor.get_name().unwrap_or_default(),
+                                    decl.get_kind(),
+                                );
+                            }
                             if decl.get_kind() == EntityKind::StructDecl {
                                 // Use the typedef name as the canonical name
                                 // if the struct itself is anonymous.
@@ -126,14 +140,35 @@ pub fn parse_headers(
                                 // field references resolve.
                                 if !seen.contains(&typedef_name) {
                                     seen.insert(typedef_name.clone());
-                                    if !seen.contains(&key) {
+                                    // key == typedef_name for the two common patterns:
+                                    //   typedef struct Foo { ... } Foo;   (named, matching)
+                                    //   typedef struct { ... } Foo;       (anonymous)
+                                    // In both cases typedef_name was just inserted above so
+                                    // the inner !seen.contains(&key) guard would always fire.
+                                    // Allow it through when the names are the same.
+                                    if key == typedef_name || !seen.contains(&key) {
                                         seen.insert(key.clone());
                                         if let Some(s) = visit_struct(&decl, &key, &mut report) {
                                             registry.insert(key.clone(), s.clone());
+                                        } else if verbose {
+                                            eprintln!(
+                                                "[typedef] visit_struct returned None for `{}` \
+                                                 (get_type={}, sizeof={:?})",
+                                                key,
+                                                decl.get_type().is_some(),
+                                                decl.get_type()
+                                                    .and_then(|t| t.get_sizeof().ok()),
+                                            );
                                         }
+                                    } else if verbose {
+                                        eprintln!(
+                                            "[typedef] `{}` skipped — key `{}` already in seen",
+                                            typedef_name, key
+                                        );
                                     }
                                     // If typedef name differs from struct name,
-                                    // insert an alias entry.
+                                    // insert an alias entry (covers the case where
+                                    // key was already registered via StructDecl).
                                     if typedef_name != key {
                                         if let Some(s) = registry.get(&key).cloned() {
                                             registry.insert(typedef_name, s);

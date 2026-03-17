@@ -103,7 +103,9 @@ Takes a directory of `.h` files and emits three files per struct:
 
 ```bash
 podman exec -it spear-dev header-gen \
-  --input      /workspace/headers \
+  --input      /spear/headers \
+  --include    /spear/includes \
+  --include    /spear/lm-includes \
   --endian     little \
   --word-size  32 \
   --define     LINUX \
@@ -117,6 +119,7 @@ podman exec -it spear-dev header-gen \
 ```bash
 cargo run -p header-gen -- \
   --input      headers/ \
+  --include    /usr/include \
   --endian     little \
   --word-size  32 \
   --define     LINUX \
@@ -130,6 +133,25 @@ cargo run -p header-gen -- \
 - `64` → `i64`/`u64` (LP64 ABI)
 
 `--endian` controls the decode method emitted (`from_le_bytes` vs `from_be_bytes`).
+
+`--include PATH` (repeatable) adds an extra clang include search path. Use this for
+system headers or cross-compilation sysroots that your `--input` headers `#include`.
+**Structs defined in `--include` directories are not emitted** — only structs whose
+definition lives under `--input` appear in the output.
+
+`--verbose` / `-v` prints per-struct filter decisions to stderr. Use this to diagnose
+0-struct output without a redeploy cycle:
+
+```
+header-gen: input_dir as given   = `headers/`
+header-gen: input_dir canonical  = `/spear/mission/headers`
+[filter] MissionStatus  @  /spear/mission/headers/mission.h  ->  PASS
+[filter] _IO_FILE       @  /usr/include/libio.h              ->  SKIP
+```
+
+If all structs show `SKIP`, `canonical_input_dir` and the paths libclang reports do
+not share a common prefix — check that `--input` points at the actual header
+directory, not a parent or symlink that resolves differently.
 
 **Deployment:** `header-gen` is deployed via the `spear-dev` container image, which installs `libclang` at the OS level. There is no standalone release binary — LLVM's transitive shared-library dependencies make portable binary distribution impractical.
 
