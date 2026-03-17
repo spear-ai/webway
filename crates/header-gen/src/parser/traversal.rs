@@ -66,9 +66,36 @@ pub fn parse_headers(
     let mut registry = Registry::new();
     let mut seen: HashSet<String> = HashSet::new();
 
+    // Only register structs whose definition lives in one of the user's input
+    // headers. Without this filter, every struct from transitively-included
+    // system headers (glibc internals, pthread types, etc.) would also appear
+    // in the output.
+    let input_files: HashSet<PathBuf> = headers.iter().cloned().collect();
+
+    let in_input_headers = |cursor: &clang::Entity| -> bool {
+        cursor
+            .get_location()
+            .and_then(|loc| loc.get_file_location().file)
+            .map(|f| {
+                let p = f.get_path();
+                input_files.contains(&p)
+                    || p.canonicalize()
+                        .map(|c| {
+                            input_files
+                                .iter()
+                                .any(|h| h.canonicalize().ok() == Some(c.clone()))
+                        })
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    };
+
     tu.get_entity().visit_children(|cursor, _parent| {
         match cursor.get_kind() {
             EntityKind::StructDecl => {
+                if !in_input_headers(&cursor) {
+                    return clang::EntityVisitResult::Continue;
+                }
                 if let Some(name) = cursor.get_name() {
                     if !name.is_empty() && !seen.contains(&name) {
                         seen.insert(name.clone());
@@ -80,6 +107,9 @@ pub fn parse_headers(
                 clang::EntityVisitResult::Continue
             }
             EntityKind::TypedefDecl => {
+                if !in_input_headers(&cursor) {
+                    return clang::EntityVisitResult::Continue;
+                }
                 // Handle `typedef struct Foo { ... } Foo;`
                 if let Some(ty) = cursor.get_typedef_underlying_type() {
                     let canon = ty.get_canonical_type();
