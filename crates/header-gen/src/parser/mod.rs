@@ -31,5 +31,5 @@ pub fn parse(
     // Merge caller-supplied include paths with the auto-discovered ones.
     include_flags.extend_from_slice(extra_includes);
 
-    traversal::parse_headers(&headers, &include_flags, defines, config)
+    traversal::parse_headers(&headers, input_dir, &include_flags, defines, config)
 }

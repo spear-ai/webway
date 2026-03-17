@@ -18,6 +18,7 @@ use crate::report::{BitfieldItem, ParseFailure, ReviewReport, UnionItem, Unresol
 /// file) and return the discovered struct registry plus a review report.
 pub fn parse_headers(
     headers: &[PathBuf],
+    input_dir: &std::path::Path,
     include_flags: &[String],
     defines: &[String],
     config: TargetConfig,
@@ -66,24 +67,28 @@ pub fn parse_headers(
     let mut registry = Registry::new();
     let mut seen: HashSet<String> = HashSet::new();
 
-    // Only register structs whose definition lives in one of the user's input
-    // headers. Without this filter, every struct from transitively-included
+    // Only register structs whose definition lives under the user's input
+    // directory. Without this filter, every struct from transitively-included
     // system headers (glibc internals, pthread types, etc.) would also appear
     // in the output.
     //
-    // Pre-canonicalize all input paths so that relative paths, symlinks, and
-    // any platform path differences are resolved before comparison.
-    let input_files: HashSet<PathBuf> = headers
-        .iter()
-        .filter_map(|h| h.canonicalize().ok())
-        .collect();
+    // Use starts_with on the canonical input dir rather than exact file
+    // matching — more robust across container mounts and symlinks.
+    let canonical_input_dir = input_dir
+        .canonicalize()
+        .unwrap_or_else(|_| input_dir.to_path_buf());
 
     let in_input_headers = |cursor: &clang::Entity| -> bool {
         cursor
             .get_location()
             .and_then(|loc| loc.get_file_location().file)
-            .and_then(|f| f.get_path().canonicalize().ok())
-            .map(|p| input_files.contains(&p))
+            .map(|f| {
+                let p = f.get_path();
+                p.starts_with(&canonical_input_dir)
+                    || p.canonicalize()
+                        .map(|c| c.starts_with(&canonical_input_dir))
+                        .unwrap_or(false)
+            })
             .unwrap_or(false)
     };
 
