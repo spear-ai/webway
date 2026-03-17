@@ -32,7 +32,7 @@ fn parse_single(filename: &str, config: TargetConfig) -> header_gen::ir::Registr
         fixtures_dir().join(dir)
     };
 
-    let (registry, _report) = parser::parse(&input_dir, &[], &[], config)
+    let (registry, _report) = parser::parse(&input_dir, &[], &[], config, false)
         .unwrap_or_else(|e| panic!("parse failed for {base}: {e}"));
     registry
 }
@@ -124,7 +124,7 @@ fn bitfield_width_is_recorded() {
 #[test]
 fn bitfield_in_review_report() {
     let dir = fixtures_dir();
-    let (_, report) = parser::parse(&dir, &[], &[], le32()).unwrap();
+    let (_, report) = parser::parse(&dir, &[], &[], le32(), false).unwrap();
     assert!(
         !report.bitfields.is_empty(),
         "expected bitfield items in report"
@@ -152,7 +152,7 @@ fn union_becomes_raw_bytes() {
 #[test]
 fn union_in_review_report() {
     let dir = fixtures_dir();
-    let (_, report) = parser::parse(&dir, &[], &[], le32()).unwrap();
+    let (_, report) = parser::parse(&dir, &[], &[], le32(), false).unwrap();
     assert!(!report.unions.is_empty(), "expected union items in report");
 }
 

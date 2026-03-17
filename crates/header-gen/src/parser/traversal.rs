@@ -22,6 +22,7 @@ pub fn parse_headers(
     include_flags: &[String],
     defines: &[String],
     config: TargetConfig,
+    verbose: bool,
 ) -> Result<(Registry, ReviewReport)> {
     // Hold the global lock for the entire duration of this parse so that
     // concurrent test threads don't try to create multiple Clang instances.
@@ -78,24 +79,17 @@ pub fn parse_headers(
         .canonicalize()
         .unwrap_or_else(|_| input_dir.to_path_buf());
 
-    let in_input_headers = |cursor: &clang::Entity| -> bool {
-        cursor
-            .get_location()
-            .and_then(|loc| loc.get_file_location().file)
-            .map(|f| {
-                let p = f.get_path();
-                p.starts_with(&canonical_input_dir)
-                    || p.canonicalize()
-                        .map(|c| c.starts_with(&canonical_input_dir))
-                        .unwrap_or(false)
-            })
-            .unwrap_or(false)
-    };
+    if verbose {
+        eprintln!(
+            "[filter] canonical_input_dir = `{}`",
+            canonical_input_dir.display()
+        );
+    }
 
     tu.get_entity().visit_children(|cursor, _parent| {
         match cursor.get_kind() {
             EntityKind::StructDecl => {
-                if !in_input_headers(&cursor) {
+                if !check_in_input_headers(&cursor, &canonical_input_dir, verbose) {
                     return clang::EntityVisitResult::Continue;
                 }
                 if let Some(name) = cursor.get_name() {
@@ -109,7 +103,7 @@ pub fn parse_headers(
                 clang::EntityVisitResult::Continue
             }
             EntityKind::TypedefDecl => {
-                if !in_input_headers(&cursor) {
+                if !check_in_input_headers(&cursor, &canonical_input_dir, verbose) {
                     return clang::EntityVisitResult::Continue;
                 }
                 // Handle `typedef struct Foo { ... } Foo;`
@@ -156,7 +150,49 @@ pub fn parse_headers(
         }
     });
 
+    if verbose {
+        eprintln!(
+            "[filter] summary: {} struct(s) passed filter",
+            registry.len()
+        );
+    }
+
     Ok((registry, report))
+}
+
+fn check_in_input_headers(
+    cursor: &clang::Entity,
+    canonical_input_dir: &std::path::Path,
+    verbose: bool,
+) -> bool {
+    let passes = cursor
+        .get_location()
+        .and_then(|loc| loc.get_file_location().file)
+        .map(|f| {
+            let p = f.get_path();
+            p.starts_with(canonical_input_dir)
+                || p.canonicalize()
+                    .map(|c| c.starts_with(canonical_input_dir))
+                    .unwrap_or(false)
+        })
+        .unwrap_or(false);
+
+    if verbose {
+        let name = cursor.get_name().unwrap_or_else(|| "<anon>".to_owned());
+        let file = cursor
+            .get_location()
+            .and_then(|loc| loc.get_file_location().file)
+            .map(|f| f.get_path().display().to_string())
+            .unwrap_or_else(|| "<unknown>".to_owned());
+        eprintln!(
+            "[filter] {:<40}  @  {}  ->  {}",
+            name,
+            file,
+            if passes { "PASS" } else { "SKIP" },
+        );
+    }
+
+    passes
 }
 
 fn visit_struct(cursor: &clang::Entity, name: &str, report: &mut ReviewReport) -> Option<CStruct> {

@@ -12,7 +12,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 fn parse_all(config: TargetConfig) -> header_gen::ir::Registry {
-    let (reg, _) = parser::parse(&fixtures_dir(), &[], &[], config).expect("parse failed");
+    let (reg, _) = parser::parse(&fixtures_dir(), &[], &[], config, false).expect("parse failed");
     reg
 }
 

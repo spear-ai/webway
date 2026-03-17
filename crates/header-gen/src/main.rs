@@ -45,6 +45,12 @@ struct Cli {
     /// Output directory for the generated mapping functions (`mappers.rs`).
     #[arg(long = "out-mapping", default_value = "generated/mapping")]
     out_mapping: PathBuf,
+
+    /// Print per-struct filter decisions (file path libclang reported and
+    /// whether it passed the input-dir filter). Use this to diagnose
+    /// 0-struct output without a redeploy cycle.
+    #[arg(long, short = 'v', default_value = "false")]
+    verbose: bool,
 }
 
 // ─── Clap value enums (thin wrappers around our domain types) ────────────────
@@ -99,6 +105,19 @@ fn main() -> Result<()> {
         },
     };
 
+    if cli.verbose {
+        eprintln!(
+            "header-gen: input_dir as given  = `{}`",
+            cli.input.display()
+        );
+        if let Ok(canonical) = cli.input.canonicalize() {
+            eprintln!(
+                "header-gen: input_dir canonical  = `{}`",
+                canonical.display()
+            );
+        }
+    }
+
     eprintln!(
         "header-gen: parsing `{}` (endian={}, word_size={})",
         cli.input.display(),
@@ -113,8 +132,14 @@ fn main() -> Result<()> {
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
 
-    let (registry, report) = parser::parse(&cli.input, &extra_includes, &cli.defines, config)
-        .with_context(|| format!("Failed to parse headers in `{}`", cli.input.display()))?;
+    let (registry, report) = parser::parse(
+        &cli.input,
+        &extra_includes,
+        &cli.defines,
+        config,
+        cli.verbose,
+    )
+    .with_context(|| format!("Failed to parse headers in `{}`", cli.input.display()))?;
 
     eprintln!("  {} struct(s) discovered", registry.len());
     if !report.is_empty() {

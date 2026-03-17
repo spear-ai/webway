@@ -21,6 +21,7 @@ pub fn parse(
     extra_includes: &[String],
     defines: &[String],
     config: TargetConfig,
+    verbose: bool,
 ) -> Result<(Registry, ReviewReport)> {
     let (headers, mut include_flags) = discovery::discover(input_dir)?;
 
@@ -31,5 +32,12 @@ pub fn parse(
     // Merge caller-supplied include paths with the auto-discovered ones.
     include_flags.extend_from_slice(extra_includes);
 
-    traversal::parse_headers(&headers, input_dir, &include_flags, defines, config)
+    traversal::parse_headers(
+        &headers,
+        input_dir,
+        &include_flags,
+        defines,
+        config,
+        verbose,
+    )
 }
