@@ -110,7 +110,7 @@ fn main() -> Result<()> {
     let extra_includes: Vec<String> = cli
         .includes
         .iter()
-        .map(|p| format!("-I{}", p.display()))
+        .map(|p| p.to_string_lossy().into_owned())
         .collect();
 
     let (registry, report) = parser::parse(&cli.input, &extra_includes, &cli.defines, config)
