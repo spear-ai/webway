@@ -70,23 +70,20 @@ pub fn parse_headers(
     // headers. Without this filter, every struct from transitively-included
     // system headers (glibc internals, pthread types, etc.) would also appear
     // in the output.
-    let input_files: HashSet<PathBuf> = headers.iter().cloned().collect();
+    //
+    // Pre-canonicalize all input paths so that relative paths, symlinks, and
+    // any platform path differences are resolved before comparison.
+    let input_files: HashSet<PathBuf> = headers
+        .iter()
+        .filter_map(|h| h.canonicalize().ok())
+        .collect();
 
     let in_input_headers = |cursor: &clang::Entity| -> bool {
         cursor
             .get_location()
             .and_then(|loc| loc.get_file_location().file)
-            .map(|f| {
-                let p = f.get_path();
-                input_files.contains(&p)
-                    || p.canonicalize()
-                        .map(|c| {
-                            input_files
-                                .iter()
-                                .any(|h| h.canonicalize().ok() == Some(c.clone()))
-                        })
-                        .unwrap_or(false)
-            })
+            .and_then(|f| f.get_path().canonicalize().ok())
+            .map(|p| input_files.contains(&p))
             .unwrap_or(false)
     };
 
