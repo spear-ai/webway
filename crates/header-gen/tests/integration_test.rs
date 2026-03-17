@@ -138,6 +138,45 @@ fn big_endian_64_outputs_correct_markers() {
     );
 }
 
+// ─── Include path filtering ───────────────────────────────────────────────────
+
+/// Verifies that structs defined in --include dirs are NOT emitted — only
+/// structs in --input headers appear in the registry. This mirrors the
+/// real-world setup: headers/ (input), includes/ (system), lm-includes/ (LM).
+#[test]
+fn structs_from_include_dirs_are_not_emitted() {
+    let input_dir = tempfile::tempdir().expect("input tempdir");
+    let include_dir = tempfile::tempdir().expect("include tempdir");
+
+    // External type in the include dir — should NOT appear in output.
+    std::fs::write(
+        include_dir.path().join("ext_types.h"),
+        "typedef struct ExtType { int x; } ExtType;\n",
+    )
+    .unwrap();
+
+    // User header in the input dir — SHOULD appear in output.
+    // It references ExtType from the include dir.
+    std::fs::write(
+        input_dir.path().join("user.h"),
+        "#include <ext_types.h>\ntypedef struct UserRecord { int id; ExtType ext; } UserRecord;\n",
+    )
+    .unwrap();
+
+    let include_flag = include_dir.path().to_string_lossy().into_owned();
+    let (reg, _) =
+        parser::parse(input_dir.path(), &[include_flag], &[], le32()).expect("parse failed");
+
+    assert!(
+        reg.contains_key("UserRecord"),
+        "UserRecord (from input dir) should be in registry"
+    );
+    assert!(
+        !reg.contains_key("ExtType"),
+        "ExtType (from include dir) must not be in registry — only input headers are emitted"
+    );
+}
+
 // ─── Typedef resolution ───────────────────────────────────────────────────────
 
 #[test]
