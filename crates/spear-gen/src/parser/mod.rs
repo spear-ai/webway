@@ -392,7 +392,7 @@ fn parse_complex_type(node: Node) -> Result<Option<ComplexType>> {
         }));
     }
 
-    // xs:complexContent → xs:extension
+    // xs:complexContent → xs:extension  /  xs:restriction
     if let Some(cc) = find_child_ns(node, XS, "complexContent") {
         if let Some(ext) = find_child_ns(cc, XS, "extension") {
             let base = ext
@@ -413,6 +413,65 @@ fn parse_complex_type(node: Node) -> Result<Option<ComplexType>> {
                 content: ComplexContent::Extension { base, extra_fields },
             }));
         }
+
+        // xs:complexContent → bare xs:sequence (non-standard but seen in vendor WSDLs)
+        if let Some(seq) = find_child_ns(cc, XS, "sequence") {
+            let fields = parse_fields(seq)?;
+            return Ok(Some(ComplexType {
+                name,
+                content: ComplexContent::Sequence(fields),
+            }));
+        }
+
+        // xs:complexContent → xs:restriction base="soap:Array" (SOAP-encoded arrays)
+        // The element type lives in the wsdl:arrayType attribute, e.g. "xsd:float[]".
+        // Map to a single repeated field named "item" so the existing emitters handle it.
+        if let Some(restr) = find_child_ns(cc, XS, "restriction") {
+            let base = restr.attribute("base").unwrap_or("");
+            if strip_ns_prefix(base) == "Array" {
+                // Find the wsdl:arrayType attribute on any xs:attribute child.
+                let array_type_val = restr
+                    .children()
+                    .filter(|n| n.is_element() && n.tag_name().name() == "attribute")
+                    .flat_map(|n| n.attributes())
+                    .find(|a| a.name() == "arrayType")
+                    .map(|a| a.value());
+
+                let type_ref = if let Some(val) = array_type_val {
+                    // Strip namespace prefix and trailing dimension suffix: "[]" or "[N]"
+                    let stripped = strip_ns_prefix(val);
+                    let bare = stripped
+                        .find('[')
+                        .map(|i| &stripped[..i])
+                        .unwrap_or(stripped)
+                        .trim();
+                    resolve_type_ref(bare)
+                } else {
+                    TypeRef::Builtin(Primitive::Bytes)
+                };
+
+                return Ok(Some(ComplexType {
+                    name,
+                    content: ComplexContent::Sequence(vec![Field {
+                        name: "item".to_owned(),
+                        type_ref,
+                        optional: false,
+                        repeated: true,
+                    }]),
+                }));
+            }
+        }
+    }
+
+    // Bare xs:element children with no compositor wrapper — treat as implicit sequence.
+    // Some vendor WSDLs omit the xs:sequence and place elements directly inside
+    // xs:complexType, e.g.: <xs:complexType name="Foo"><xs:element name="X" type="T"/></xs:complexType>
+    let bare_fields = parse_fields(node)?;
+    if !bare_fields.is_empty() {
+        return Ok(Some(ComplexType {
+            name,
+            content: ComplexContent::Sequence(bare_fields),
+        }));
     }
 
     // Empty complex type — emit as an empty struct.
@@ -667,6 +726,284 @@ mod tests {
             TypeRef::Builtin(Primitive::String),
             "CallSign alias should resolve to String"
         );
+    }
+
+    // ── SOAP encoded array types ──────────────────────────────────────────────
+
+    /// `xs:complexType / xs:complexContent / xs:restriction base="soap:Array"` with
+    /// a `wsdl:arrayType="xsd:float[]"` attribute must produce a single repeated
+    /// field named "item" of type Float.  Previously this fell through to an empty
+    /// struct because only `xs:extension` was handled.
+    #[test]
+    fn soap_array_restriction_produces_repeated_item_field() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:soap="http://schemas.xmlsoap.org/soap/encoding/"
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <xsd:complexType name="floatArray">
+    <xsd:complexContent>
+      <xsd:restriction base="soap:Array">
+        <xsd:attribute ref="soap:arrayType" wsdl:arrayType="xsd:float[]"/>
+      </xsd:restriction>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "floatArray")
+            .expect("floatArray not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 1, "expected exactly one field");
+        let item = &fields[0];
+        assert_eq!(item.name, "item");
+        assert_eq!(item.type_ref, TypeRef::Builtin(Primitive::Float));
+        assert!(item.repeated, "item field must be repeated");
+    }
+
+    /// SOAP array with a fixed dimension, e.g. `wsdl:arrayType="xsd:float[24]"`.
+    /// The `[24]` suffix must be stripped and the type resolved to Float.
+    #[test]
+    fn soap_array_fixed_size_dimension_is_stripped() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:soap="http://schemas.xmlsoap.org/soap/encoding/"
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <xsd:complexType name="floatArray24">
+    <xsd:complexContent>
+      <xsd:restriction base="soap:Array">
+        <xsd:attribute ref="soap:arrayType" wsdl:arrayType="xsd:float[24]"/>
+      </xsd:restriction>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "floatArray24")
+            .expect("floatArray24 not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 1);
+        let item = &fields[0];
+        assert_eq!(item.type_ref, TypeRef::Builtin(Primitive::Float));
+        assert!(item.repeated);
+    }
+
+    /// SOAP array with a `[#]` dimension suffix, e.g. `wsdl:arrayType="DeFloatArray[#]"`.
+    /// The `[#]` must be stripped and the named type resolved correctly.
+    #[test]
+    fn soap_array_hash_dimension_is_stripped() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:soap="http://schemas.xmlsoap.org/soap/encoding/"
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <xsd:complexType name="DeFloatArrayCollection">
+    <xsd:complexContent>
+      <xsd:restriction base="soap:Array">
+        <xsd:attribute xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                       ref="soap:arrayType" wsdl:arrayType="DeFloatArray[#]"/>
+      </xsd:restriction>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "DeFloatArrayCollection")
+            .expect("DeFloatArrayCollection not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 1);
+        let item = &fields[0];
+        assert_eq!(item.type_ref, TypeRef::Named("DeFloatArray".to_owned()));
+        assert!(item.repeated);
+    }
+
+    /// `xs:complexContent` containing a bare `xs:sequence` (no extension/restriction).
+    /// Top-level annotation on the complexType must also be ignored.
+    #[test]
+    fn complex_content_with_bare_sequence_is_parsed() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:complexType name="SensorData">
+    <xsd:annotation><xsd:documentation>sensor reading</xsd:documentation></xsd:annotation>
+    <xsd:complexContent>
+      <xsd:sequence>
+        <xsd:element name="Timestamp" type="xsd:long"/>
+        <xsd:element name="Value" type="xsd:float"/>
+        <xsd:element name="Quality" type="xsd:int"/>
+      </xsd:sequence>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "SensorData")
+            .expect("SensorData not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].name, "Timestamp");
+        assert_eq!(fields[0].type_ref, TypeRef::Builtin(Primitive::Int64));
+        assert_eq!(fields[1].name, "Value");
+        assert_eq!(fields[1].type_ref, TypeRef::Builtin(Primitive::Float));
+        assert_eq!(fields[2].name, "Quality");
+        assert_eq!(fields[2].type_ref, TypeRef::Builtin(Primitive::Int32));
+    }
+
+    /// Bare elements with `xs:annotation` children — annotations must be ignored,
+    /// name/type attributes must still be read correctly.
+    #[test]
+    fn bare_elements_with_annotations_are_parsed() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:complexType name="AnnotatedRecord">
+    <xsd:element name="StartTime" type="xsd:long">
+      <xsd:annotation><xsd:documentation>epoch ms</xsd:documentation></xsd:annotation>
+    </xsd:element>
+    <xsd:element name="EndTime" type="xsd:long"/>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "AnnotatedRecord")
+            .expect("AnnotatedRecord not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, "StartTime");
+        assert_eq!(fields[0].type_ref, TypeRef::Builtin(Primitive::Int64));
+        assert_eq!(fields[1].name, "EndTime");
+        assert_eq!(fields[1].type_ref, TypeRef::Builtin(Primitive::Int64));
+    }
+
+    /// `xs:complexType` with bare `xs:element` children (no `xs:sequence` wrapper).
+    /// Vendor WSDLs sometimes omit the compositor; should be treated as an
+    /// implicit sequence.
+    #[test]
+    fn bare_element_without_sequence_wrapper_is_parsed() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:complexType name="DeFloatArray">
+    <xsd:element name="ElementArray" type="xsd:float"/>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "DeFloatArray")
+            .expect("DeFloatArray not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, "ElementArray");
+        assert_eq!(fields[0].type_ref, TypeRef::Builtin(Primitive::Float));
+    }
+
+    /// SOAP array with a named (non-primitive) element type, e.g.
+    /// `wsdl:arrayType="DATA_RECORD[]"`.  Should produce a repeated `item`
+    /// field with `TypeRef::Named("DATA_RECORD")`.
+    #[test]
+    fn soap_array_named_type_produces_repeated_named_field() {
+        let xsd = r#"<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:soap="http://schemas.xmlsoap.org/soap/encoding/"
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <xsd:complexType name="DATA_RECORD">
+    <xsd:complexContent>
+      <xsd:restriction base="soap:Array">
+        <xsd:attribute xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                       ref="soap:arrayType" wsdl:arrayType="DATA_RECORD[]"/>
+      </xsd:restriction>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>"#;
+
+        let doc = roxmltree::Document::parse(xsd).expect("parse xsd");
+        let types = parse_document(&doc).expect("parse_document");
+
+        let t = types
+            .iter()
+            .find(|t| t.name() == "DATA_RECORD")
+            .expect("DATA_RECORD not found");
+
+        let fields = match t {
+            TypeDef::Complex(ct) => match &ct.content {
+                ComplexContent::Sequence(f) => f,
+                other => panic!("expected Sequence, got {other:?}"),
+            },
+            _ => panic!("expected ComplexType"),
+        };
+
+        assert_eq!(fields.len(), 1);
+        let item = &fields[0];
+        assert_eq!(item.name, "item");
+        assert_eq!(item.type_ref, TypeRef::Named("DATA_RECORD".to_owned()));
+        assert!(item.repeated);
     }
 
     /// Aliases must NOT produce their own `TypeDef::Simple` entries —
