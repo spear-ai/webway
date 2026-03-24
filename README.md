@@ -256,11 +256,36 @@ cargo build --offline --release -p spear-gateway
 runners don't ship with `libclang`. It gets full test coverage in the dedicated
 `test-header-gen` job on Linux.
 
-Releases (tagged `v*`) build and attach to a GitHub Release:
+## Releases
+
+Releases are managed with [Changesets](https://github.com/changesets/changesets).
+
+**To include a change in a release**, add a changeset file to your PR:
+
+```bash
+npx changeset
+```
+
+Or create `.changeset/<your-change>.md` manually:
+
+```markdown
+---
+"@spear-ai/webway": patch
+---
+
+Description of what changed.
+```
+
+Bump types: `patch` (bug fix), `minor` (new feature), `major` (breaking change).
+
+When your PR merges to `main`, the `prepare-release` workflow opens or updates a **"Release 🚀"** PR with the version bump applied across all crates. Merging that PR tags the release and triggers the build.
+
+Artifacts attached to each GitHub Release:
 - `spear-gen-linux-x86_64-musl.tar.gz` — airgapped deployment binary (musl static)
 - `spear-gen-linux-x86_64.tar.gz`
 - `spear-gen-macos-arm64.tar.gz`
 - `spear-gen-macos-x86_64.tar.gz`
+- `spear-dev-<version>.tar.gz` — container image
 
 `header-gen` is not released as a standalone binary — it is deployed via the `spear-dev` container image.
 
