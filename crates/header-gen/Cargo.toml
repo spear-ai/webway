@@ -1,6 +1,6 @@
 [package]
 name = "header-gen"
-version = "0.2.24"
+version = "0.2.25"
 edition = "2021"
 description = "C header → Rust struct + proto3 + mapping function generator"
 

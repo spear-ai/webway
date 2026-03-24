@@ -1,5 +1,11 @@
 # @spear-ai/webway
 
+## 0.2.25
+
+### Patch Changes
+
+- 378ac0d: Test release workflow with GitHub App token.
+
 ## 0.2.24
 
 ### Patch Changes
