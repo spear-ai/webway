@@ -1,6 +1,6 @@
 {
   "name": "@spear-ai/webway",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "private": true,
   "devDependencies": {
     "@changesets/cli": "^2.27.0"
