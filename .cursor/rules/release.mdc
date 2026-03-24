@@ -46,7 +46,7 @@ builds four binaries and attaches them to a GitHub release automatically.
    ```
 
 6. Watch the release workflow at:
-   `https://github.com/Codykilpatrick/webway/actions`
+   `https://github.com/spear-ai/webway/actions`
 
    It will build and attach five binaries to the release:
    - `spear-gen-linux-x86_64-musl.tar.gz` — **airgapped deployment binary (musl static)**
@@ -56,7 +56,7 @@ builds four binaries and attaches them to a GitHub release automatically.
    - `header-gen-linux-x86_64.tar.gz` — **C header → Rust/proto generator (static LLVM)**
 
 7. The release is created automatically at:
-   `https://github.com/Codykilpatrick/webway/releases`
+   `https://github.com/spear-ai/webway/releases`
 
 ## If a release build fails
 
