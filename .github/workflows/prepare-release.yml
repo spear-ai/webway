@@ -1,0 +1,36 @@
+name: Prepare Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Create or update release PR
+        uses: changesets/action@v1
+        with:
+          version: npx changeset version && bash scripts/sync-cargo-versions.sh
+          publish: bash scripts/tag-release.sh
+          title: "Release \U0001F680"
+          commit: "chore: release"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

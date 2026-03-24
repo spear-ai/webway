@@ -13,7 +13,6 @@ jobs:
   # Build and test on native targets that developers use locally.
   test:
     name: Test (${{ matrix.os }})
-    if: "github.event_name == 'pull_request' || !startsWith(github.event.head_commit.message, 'chore: release')"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,7 +62,6 @@ jobs:
   # cmake + libcurl4-openssl-dev (same as the test job above).
   check-musl:
     name: Check (x86_64-unknown-linux-musl)
-    if: "github.event_name == 'pull_request' || !startsWith(github.event.head_commit.message, 'chore: release')"
     runs-on: ubuntu-latest
 
     steps:
@@ -96,7 +94,6 @@ jobs:
   # runners don't ship with libclang; it gets full test coverage here instead.
   test-header-gen:
     name: Test header-gen (Linux x86_64)
-    if: "github.event_name == 'pull_request' || !startsWith(github.event.head_commit.message, 'chore: release')"
     runs-on: ubuntu-latest
 
     steps:
@@ -128,7 +125,6 @@ jobs:
 
   lint:
     name: Lint
-    if: "github.event_name == 'pull_request' || !startsWith(github.event.head_commit.message, 'chore: release')"
     runs-on: ubuntu-latest
 
     steps:
