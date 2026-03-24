@@ -16,9 +16,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Use a PAT so the pushed branch can trigger workflows.
-          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,7 +41,7 @@ jobs:
 
       - name: Open or update release PR
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
           PR_NUMBER=$(gh pr list --head release/next --json number --jq '.[0].number')
