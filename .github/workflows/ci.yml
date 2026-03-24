@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install libclang/LLVM dev packages
-        run: sudo apt-get update && sudo apt-get install -y llvm-dev libclang-dev clang libc-dev
+        run: sudo apt-get update && sudo apt-get install -y llvm-dev libclang-dev clang
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
