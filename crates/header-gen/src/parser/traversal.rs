@@ -156,8 +156,7 @@ pub fn parse_headers(
                                                  (get_type={}, sizeof={:?})",
                                                 key,
                                                 decl.get_type().is_some(),
-                                                decl.get_type()
-                                                    .and_then(|t| t.get_sizeof().ok()),
+                                                decl.get_type().and_then(|t| t.get_sizeof().ok()),
                                             );
                                         }
                                     } else if verbose {
