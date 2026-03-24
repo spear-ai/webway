@@ -1,0 +1,59 @@
+name: Bump Version
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump:
+    name: Open/update release PR
+    runs-on: ubuntu-latest
+    # Skip when the release PR itself merges — that commit is the release.
+    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use a PAT so the pushed branch can trigger workflows.
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump version
+        id: bump
+        run: |
+          NEW_VERSION=$(bash scripts/bump-version.sh | tail -1)
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Push release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release/next
+          git add crates/spear-gen/Cargo.toml \
+                  crates/spear-lib/Cargo.toml \
+                  crates/spear-gateway/Cargo.toml \
+                  crates/header-gen/Cargo.toml \
+                  Cargo.lock
+          git commit -m "chore: release v${{ steps.bump.outputs.version }}"
+          git push origin release/next --force
+
+      - name: Open or update release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          PR_NUMBER=$(gh pr list --head release/next --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr edit "$PR_NUMBER" --title "chore: release v${VERSION}"
+          else
+            gh pr create \
+              --head release/next \
+              --base main \
+              --title "chore: release v${VERSION}" \
+              --body "Automated patch bump to v${VERSION}. Merge when ready to release."
+          fi

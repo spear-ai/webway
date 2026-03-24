@@ -34,6 +34,12 @@ The Ubuntu CI jobs require `cmake` and `libcurl4-openssl-dev` to build
 `rdkafka` (pulled in by `spear-lib`). These are installed in the workflow —
 no action needed locally on macOS.
 
+## Fix CI failures one at a time
+
+When CI is failing, fix one issue, verify it locally, then push. Do not stack
+multiple speculative fixes in a single commit. If a fix doesn't work locally,
+diagnose further before pushing.
+
 ## Why
 
 The CI lint job runs `cargo fmt -- --check` and `cargo clippy -- -D warnings`
