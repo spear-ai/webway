@@ -1,5 +1,11 @@
 # @spear-ai/webway
 
+## 0.2.26
+
+### Patch Changes
+
+- 63d3476: Fix release workflow to use GitHub App token for checkout so tag pushes trigger release.
+
 ## 0.2.25
 
 ### Patch Changes
