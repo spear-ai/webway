@@ -1,0 +1,59 @@
+---
+description: Testing and verification strategy for header-gen changes
+alwaysApply: true
+---
+
+# header-gen testing strategy
+
+When making changes to `header-gen` (parser, emitter, filtering, CLI):
+
+## Write a test before deploying to the container
+
+Deploying to verify is expensive: push → tag → release → rebuild image → transfer to high side → test. **Always verify locally first.**
+
+1. Add a test in `crates/header-gen/tests/integration_test.rs` using `tempfile::tempdir()` + inline header strings. No new static fixtures needed.
+2. Run locally: `cargo test -p header-gen` (libclang is wired up via `.cargo/config.toml`)
+3. Only deploy once the test is green.
+
+## Established test patterns — use these as templates
+
+| Scenario | Test name |
+|---|---|
+| System types (glibc/pthread) bleeding into output | `system_types_do_not_bleed_through_include` |
+| Container bind mount / symlinked input dir | `filter_works_through_symlinked_input_dir` |
+| Non-canonical path with `..` components | `filter_works_with_dotdot_in_input_dir` |
+| Types from `--include` dirs not emitted | `structs_from_include_dirs_are_not_emitted` |
+
+New scenarios follow the same pattern: write an inline header, call `parser::parse()`, assert registry contents.
+
+## Skip-not-fail for environment-specific tests
+
+For tests that need system headers or platform features:
+```rust
+let system_include = match find_system_headers() {
+    Some(p) => p,
+    None => { eprintln!("skipped: stdint.h not found"); return; }
+};
+```
+Use early `return` rather than `#[ignore]` — ignored tests create noise in CI.
+
+## Use `--verbose` to diagnose container failures without a code change
+
+If the container produces 0 structs, run once with `--verbose` (`-v`):
+```bash
+header-gen --input /spear/headers --include /spear/includes --verbose ...
+```
+
+Output shows:
+```
+header-gen: input_dir canonical  = `/spear/mission/headers`
+[filter] AcmsgHeader  @  /spear/mission/headers/acmsg.h  ->  PASS
+[filter] _IO_FILE     @  /usr/include/libio.h             ->  SKIP
+[filter] summary: 1 struct(s) passed filter
+```
+
+This reveals the path mismatch immediately. Fix locally, add a test that reproduces it, then deploy.
+
+## Rule of thumb
+
+> If a behavior can fail silently in the container, it needs a test that would have caught it locally.
