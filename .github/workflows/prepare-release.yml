@@ -28,7 +28,7 @@ jobs:
       - name: Create or update release PR
         uses: changesets/action@v1
         with:
-          version: npx changeset version && bash scripts/sync-cargo-versions.sh
+          version: bash scripts/changeset-version.sh
           publish: bash scripts/tag-release.sh
           title: "Release \U0001F680"
           commit: "chore: release"

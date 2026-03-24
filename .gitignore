@@ -3,3 +3,4 @@ generated/
 vendor/
 spear-dev.tar.gz
 node_modules/
+package-lock.json
