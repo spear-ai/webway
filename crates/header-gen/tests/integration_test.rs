@@ -282,9 +282,15 @@ fn system_types_do_not_bleed_through_include() {
         "#include <stdint.h>\ntypedef struct MissionStatus { uint32_t id; uint32_t flags; } MissionStatus;\n",
     ).unwrap();
 
-    let include_flag = system_include.to_string_lossy().into_owned();
+    // On Ubuntu 22.04+, multiarch bits headers live under /usr/include/x86_64-linux-gnu.
+    // Pass it as an additional include path so libclang can resolve bits/libc-header-start.h.
+    let mut include_flags = vec![system_include.to_string_lossy().into_owned()];
+    let multiarch = PathBuf::from("/usr/include/x86_64-linux-gnu");
+    if multiarch.exists() {
+        include_flags.push(multiarch.to_string_lossy().into_owned());
+    }
     let (reg, report) =
-        parser::parse(input_dir.path(), &[include_flag], &[], le32(), false).expect("parse failed");
+        parser::parse(input_dir.path(), &include_flags, &[], le32(), false).expect("parse failed");
 
     assert!(
         report.parse_failures.is_empty(),

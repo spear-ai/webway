@@ -140,6 +140,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Set LIBCLANG_PATH
+        run: |
+          LLVM_CONFIG=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG} --libdir)" >> $GITHUB_ENV
+
       - name: Check formatting
         run: cargo fmt -- --check
 
