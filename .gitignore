@@ -2,3 +2,4 @@ target/
 generated/
 vendor/
 spear-dev.tar.gz
+node_modules/
