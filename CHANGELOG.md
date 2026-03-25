@@ -1,5 +1,11 @@
 # @spear-ai/webway
 
+## 0.2.27
+
+### Patch Changes
+
+- 08515cc: Update changeset CLI.
+
 ## 0.2.26
 
 ### Patch Changes
