@@ -4,5 +4,10 @@
   "private": true,
   "devDependencies": {
     "@changesets/cli": "^2.27.0"
+  },
+  "scripts": {
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish"
   }
 }
