@@ -6,6 +6,15 @@ pre-built, fully-vendored container image.
 
 ---
 
+## Getting started
+
+**Rust workspace:** install the toolchain and system deps, then build and test — see [Building locally](#building-locally).
+
+
+```bash
+npm install
+```
+
 ## Architecture
 
 ```
@@ -258,12 +267,12 @@ runners don't ship with `libclang`. It gets full test coverage in the dedicated
 
 ## Releases
 
-Releases are managed with [Changesets](https://github.com/changesets/changesets).
+Releases are managed with [Changesets](https://github.com/changesets/changesets). Install Node dependencies once with `npm install` — see [Getting started](#getting-started).
 
 **To include a change in a release**, add a changeset file to your PR:
 
 ```bash
-npx changeset
+npm run changeset
 ```
 
 Or create `.changeset/<your-change>.md` manually:
